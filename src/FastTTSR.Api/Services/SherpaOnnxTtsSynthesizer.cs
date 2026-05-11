@@ -71,8 +71,9 @@ public sealed class SherpaOnnxTtsSynthesizer : ITtsSynthesizer
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"Sherpa-ONNX direct synthesis failed: {ex.Message}");
             return null;
         }
     }
@@ -83,7 +84,7 @@ public sealed class SherpaOnnxTtsSynthesizer : ITtsSynthesizer
         {
             Model = new OfflineTtsModelConfig
             {
-                NumThreads = Math.Max(Environment.ProcessorCount, 1),
+                NumThreads = Math.Max(1, Math.Min(4, Environment.ProcessorCount)),
                 Provider = "cpu"
             },
             MaxNumSentences = 2
@@ -95,7 +96,7 @@ public sealed class SherpaOnnxTtsSynthesizer : ITtsSynthesizer
             {
                 Model = Path.Combine(modelDirectory, model.ModelPath),
                 Voices = ResolveKokoroVoicePath(model, modelDirectory, request),
-                Tokens = string.IsNullOrWhiteSpace(model.TokensPath) ? string.Empty : Path.Combine(modelDirectory, model.TokensPath)
+                Tokens = Path.Combine(modelDirectory, model.TokensPath ?? "tokens.txt")
             };
 
             return new OfflineTts(config);
@@ -123,12 +124,10 @@ public sealed class SherpaOnnxTtsSynthesizer : ITtsSynthesizer
             return 0;
         }
 
-        var sid = model.Speakers
+        return model.Speakers
             .Select((s, i) => new { Speaker = s, Index = i })
             .FirstOrDefault(x => string.Equals(x.Speaker, speaker, StringComparison.OrdinalIgnoreCase))
             ?.Index ?? 0;
-
-        return Math.Max(sid, 0);
     }
 
     private static string ResolveKokoroVoicePath(TtsModelDefinition model, string modelDirectory, OpenAiSpeechRequest request)

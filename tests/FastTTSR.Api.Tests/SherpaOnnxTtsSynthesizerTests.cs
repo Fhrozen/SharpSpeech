@@ -6,6 +6,8 @@ namespace FastTTSR.Api.Tests;
 
 public sealed class SherpaOnnxTtsSynthesizerTests
 {
+    private static readonly byte[] RiffHeader = [82, 73, 70, 70];
+
     [Fact]
     public async Task Returns_fallback_wav_when_in_process_sherpa_cannot_initialize()
     {
@@ -19,7 +21,8 @@ public sealed class SherpaOnnxTtsSynthesizerTests
             Speakers = ["af_bella"]
         };
 
-        var result = await synthesizer.SynthesizeAsync(model, "/tmp/non-existent-models", new OpenAiSpeechRequest
+        var modelDirectory = Path.Combine(Path.GetTempPath(), "non-existent-models");
+        var result = await synthesizer.SynthesizeAsync(model, modelDirectory, new OpenAiSpeechRequest
         {
             Model = "kokoro-q4",
             Input = "hello world",
@@ -28,6 +31,6 @@ public sealed class SherpaOnnxTtsSynthesizerTests
 
         Assert.Equal("audio/wav", result.ContentType);
         Assert.NotEmpty(result.AudioBytes);
-        Assert.Equal([82, 73, 70, 70], result.AudioBytes.Take(4).ToArray());
+        Assert.Equal(RiffHeader, result.AudioBytes.Take(4).ToArray());
     }
 }

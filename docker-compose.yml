@@ -5,8 +5,10 @@ services:
     #   dockerfile: Dockerfile
     image: fhrozen/fast-ttsr:latest
     ports:
-      - "9090:8080"
+      - "${HOST_PORT:-5768}:${HTTP_PORT:-5768}"
     environment:
+      HTTP_PORT: ${HTTP_PORT:-5768}
+      HTTPS_PORT: ${HTTPS_PORT:-}
       MODEL_CACHE_DIR: /cache
       ESPEAK_DATA_DIR: /app/assets/espeak-ng-data
     volumes:

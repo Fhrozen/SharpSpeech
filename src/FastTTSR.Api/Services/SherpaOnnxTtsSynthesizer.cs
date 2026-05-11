@@ -7,6 +7,9 @@ namespace FastTTSR.Api.Services;
 
 public sealed class SherpaOnnxTtsSynthesizer : ITtsSynthesizer
 {
+    private const string KokoroEngine = "kokoro";
+    private const string VitsEngine = "vits";
+
     public Task<SynthesisResult> SynthesizeAsync(
         TtsModelDefinition model,
         string modelDirectory,
@@ -69,15 +72,15 @@ public sealed class SherpaOnnxTtsSynthesizer : ITtsSynthesizer
         static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}\"";
         var text = Quote(request.Input);
 
-        if (string.Equals(model.Engine, "kokoro", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(model.Engine, KokoroEngine, StringComparison.OrdinalIgnoreCase))
         {
             var speaker = Quote(request.Speaker ?? request.Voice);
             var modelFile = Path.Combine(modelDirectory, model.ModelPath);
-            var voices = Path.Combine(modelDirectory, model.VoicesPath ?? "voices.bin");
+            var voices = ResolveKokoroVoicePath(model, modelDirectory, request);
             return $"--kokoro-model {Quote(modelFile)} --kokoro-voices {Quote(voices)} --output-filename {Quote(outputPath)} --text {text} --sid {speaker}";
         }
 
-        if (string.Equals(model.Engine, "vits", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(model.Engine, VitsEngine, StringComparison.OrdinalIgnoreCase))
         {
             var speaker = Quote(request.Speaker ?? request.Voice);
             var modelFile = Path.Combine(modelDirectory, model.ModelPath);
@@ -86,6 +89,27 @@ public sealed class SherpaOnnxTtsSynthesizer : ITtsSynthesizer
         }
 
         return null;
+    }
+
+    private static string ResolveKokoroVoicePath(TtsModelDefinition model, string modelDirectory, OpenAiSpeechRequest request)
+    {
+        var configuredPath = model.VoicesPath ?? "voices.bin";
+        var voicePath = Path.Combine(modelDirectory, configuredPath);
+        var extension = string.IsNullOrWhiteSpace(model.VoiceFileExtension) ? ".bin" : model.VoiceFileExtension;
+        if (!Directory.Exists(voicePath))
+        {
+            return voicePath;
+        }
+
+        var speaker = request.Speaker ?? request.Voice;
+        var selectedVoiceFile = Path.Combine(voicePath, $"{speaker}{extension}");
+        if (File.Exists(selectedVoiceFile))
+        {
+            return selectedVoiceFile;
+        }
+
+        var defaultVoiceFile = model.Speakers.Select(s => Path.Combine(voicePath, $"{s}{extension}")).FirstOrDefault(File.Exists);
+        return defaultVoiceFile ?? voicePath;
     }
 
     private static byte[] GenerateSilentWave(double durationSeconds)

@@ -6,15 +6,13 @@
       "description": "Kokoro ONNX Q4 model loaded through Sherpa-ONNX runtime.",
       "engine": "kokoro",
       "modelPath": "onnx/model_q4.onnx",
-      "voicesPath": "voices.bin",
+      "voicesPath": "voices",
+      "voicesBaseUrl": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices",
+      "voiceFileExtension": ".bin",
       "assets": [
         {
           "relativePath": "onnx/model_q4.onnx",
           "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q4.onnx"
-        },
-        {
-          "relativePath": "voices.bin",
-          "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices.bin"
         }
       ],
       "supportedLanguages": ["en-us", "ja-jp"],
@@ -26,15 +24,13 @@
       "description": "Kokoro ONNX full model loaded through Sherpa-ONNX runtime.",
       "engine": "kokoro",
       "modelPath": "onnx/model.onnx",
-      "voicesPath": "voices.bin",
+      "voicesPath": "voices",
+      "voicesBaseUrl": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices",
+      "voiceFileExtension": ".bin",
       "assets": [
         {
           "relativePath": "onnx/model.onnx",
           "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model.onnx"
-        },
-        {
-          "relativePath": "voices.bin",
-          "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices.bin"
         }
       ],
       "supportedLanguages": ["en-us", "ja-jp"],

@@ -6,6 +6,8 @@ namespace FastTTSR.Api.Services;
 
 public sealed class ModelCache : IModelCache
 {
+    private const string KokoroEngine = "kokoro";
+
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _cacheDirectory;
     private readonly ILogger<ModelCache> _logger;
@@ -54,6 +56,48 @@ public sealed class ModelCache : IModelCache
                 }
 
                 _logger.LogWarning(ex, "Failed to download model file {File} for {Model}", asset.RelativePath, model.Name);
+            }
+        }
+
+        if (string.Equals(model.Engine, KokoroEngine, StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(model.VoicesPath) &&
+            !string.IsNullOrWhiteSpace(model.VoicesBaseUrl))
+        {
+            var voicesDirectory = Path.Combine(targetDirectory, model.VoicesPath);
+            Directory.CreateDirectory(voicesDirectory);
+            var extension = string.IsNullOrWhiteSpace(model.VoiceFileExtension) ? ".bin" : model.VoiceFileExtension;
+
+            foreach (var speaker in model.Speakers)
+            {
+                var voiceFileName = $"{speaker}{extension}";
+                var outputPath = Path.Combine(voicesDirectory, voiceFileName);
+                if (File.Exists(outputPath))
+                {
+                    continue;
+                }
+
+                var voiceUrl = $"{model.VoicesBaseUrl.TrimEnd('/')}/{voiceFileName}";
+                var tempPath = $"{outputPath}.tmp";
+
+                try
+                {
+                    await using var stream = await client.GetStreamAsync(voiceUrl, cancellationToken);
+                    await using (var output = File.Create(tempPath))
+                    {
+                        await stream.CopyToAsync(output, cancellationToken);
+                    }
+
+                    File.Move(tempPath, outputPath, overwrite: true);
+                }
+                catch (Exception ex)
+                {
+                    if (File.Exists(tempPath))
+                    {
+                        File.Delete(tempPath);
+                    }
+
+                    _logger.LogWarning(ex, "Failed to download voice file {Voice} for {Model}", voiceFileName, model.Name);
+                }
             }
         }
 

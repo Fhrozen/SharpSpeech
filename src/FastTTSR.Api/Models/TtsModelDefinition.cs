@@ -8,6 +8,8 @@ public sealed class TtsModelDefinition
     public string Engine { get; init; } = string.Empty;
     public string ModelPath { get; init; } = string.Empty;
     public string? VoicesPath { get; init; }
+    public string? VoicesBaseUrl { get; init; }
+    public string VoiceFileExtension { get; init; } = ".bin";
     public string? TokensPath { get; init; }
     public IReadOnlyList<TtsModelAsset> Assets { get; init; } = [];
     public IReadOnlyList<string> SupportedLanguages { get; init; } = [];

@@ -56,18 +56,15 @@ public sealed class ModelCatalog : IModelCatalog
             Description = "Kokoro ONNX Q4 model loaded through Sherpa-ONNX runtime.",
             Engine = "kokoro",
             ModelPath = "onnx/model_q4.onnx",
-            VoicesPath = "voices.bin",
+            VoicesPath = "voices",
+            VoicesBaseUrl = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices",
+            VoiceFileExtension = ".bin",
             Assets =
             [
                 new TtsModelAsset
                 {
                     RelativePath = "onnx/model_q4.onnx",
                     Url = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q4.onnx"
-                },
-                new TtsModelAsset
-                {
-                    RelativePath = "voices.bin",
-                    Url = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices.bin"
                 }
             ],
             SupportedLanguages = ["en-us", "ja-jp"],
@@ -80,18 +77,15 @@ public sealed class ModelCatalog : IModelCatalog
             Description = "Kokoro ONNX full model loaded through Sherpa-ONNX runtime.",
             Engine = "kokoro",
             ModelPath = "onnx/model.onnx",
-            VoicesPath = "voices.bin",
+            VoicesPath = "voices",
+            VoicesBaseUrl = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices",
+            VoiceFileExtension = ".bin",
             Assets =
             [
                 new TtsModelAsset
                 {
                     RelativePath = "onnx/model.onnx",
                     Url = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model.onnx"
-                },
-                new TtsModelAsset
-                {
-                    RelativePath = "voices.bin",
-                    Url = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices.bin"
                 }
             ],
             SupportedLanguages = ["en-us", "ja-jp"],

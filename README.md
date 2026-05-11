@@ -10,6 +10,7 @@ Web & REST API for TTS (OpenAI-compatible endpoint), with a Vue frontend and Doc
   - `kokoro-full`
   - `supertonic-3`
 - Model aliases/URLs are loaded from `src/FastTTSR.Api/config.json` (or `MODEL_CONFIG_PATH`)
+- Kokoro voices are resolved from the `voices/` folder in the ONNX Community repo (speaker-based `.bin` files)
 - Model download from Hugging Face on startup into cache directory (`MODEL_CACHE_DIR`)
 - Vue.js frontend (pnpm) with model/language/speaker selection
 - Dockerfile and docker-compose for a single service deployment

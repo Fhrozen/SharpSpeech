@@ -168,7 +168,55 @@
               <div class="demo-placeholder-icon">🎙️</div>
               <p>Your generated speech will appear here</p>
             </div>
-            <audio v-if="audioUrl" :src="audioUrl" controls class="audio-player"></audio>
+            
+            <!-- Audio Player Result -->
+            <div v-if="audioUrl" class="audio-result-container">
+              <div class="audio-result-header">
+                <div class="audio-result-model">
+                  <span class="model-name">{{ selectedModel?.displayName || 'Unknown' }}</span>
+                  <span class="model-badge">On-Device</span>
+                </div>
+                <div class="audio-result-metrics">
+                  <div class="metric">
+                    <span class="metric-value">{{ generationTime }}</span>
+                    <span class="metric-label">Processing Time ↓</span>
+                  </div>
+                  <div class="metric">
+                    <span class="metric-value">{{ charsPerSecond }}</span>
+                    <span class="metric-label">Chars/sec ↑</span>
+                  </div>
+                  <div class="metric">
+                    <span class="metric-value">{{ rtf }}</span>
+                    <span class="metric-label">RTF ↓</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="audio-player-wrapper">
+                <!-- Waveform animation -->
+                <div class="waveform-animation" :class="{ playing: isPlaying }">
+                  <span></span><span></span><span></span><span></span><span></span>
+                </div>
+                
+                <audio 
+                  ref="audioElement"
+                  :src="audioUrl" 
+                  @play="isPlaying = true"
+                  @pause="isPlaying = false"
+                  @ended="isPlaying = false"
+                  class="audio-player"
+                  controls
+                ></audio>
+                
+                <button @click="downloadAudio" class="download-btn" title="Download audio file">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -201,9 +249,15 @@ const statusMessage = ref('')
 const statusTitle = ref('')
 const statusClass = ref('')
 const textInput = ref(null)
+const audioElement = ref(null)
 const charCount = ref(0)
 const minCharCount = 10
 const currentPreset = ref('freeform')
+const isPlaying = ref(false)
+const generationTime = ref('0.00s')
+const charsPerSecond = ref('0')
+const rtf = ref('0.000x')
+const startTime = ref(0)
 
 const form = reactive({
   model: 'kokoro-q4',
@@ -395,6 +449,7 @@ async function synthesize() {
   loading.value = true
   error.value = ''
   audioUrl.value = ''
+  startTime.value = Date.now()
   
   updateStatus('loading', 'Generating', 'Synthesizing speech...')
 
@@ -430,6 +485,21 @@ async function synthesize() {
     const blob = await response.blob()
     audioUrl.value = URL.createObjectURL(blob)
     
+    // Calculate metrics
+    const endTime = Date.now()
+    const duration = (endTime - startTime.value) / 1000
+    const chars = form.input.length
+    
+    generationTime.value = `${duration.toFixed(2)}s`
+    charsPerSecond.value = `${(chars / duration).toFixed(1)}`
+    
+    // Get audio duration for RTF calculation
+    const audio = new Audio(audioUrl.value)
+    audio.addEventListener('loadedmetadata', () => {
+      const audioDuration = audio.duration
+      rtf.value = `${(duration / audioDuration).toFixed(3)}x`
+    })
+    
     updateStatus('success', 'Complete', 'Speech generated successfully!')
     setTimeout(() => {
       statusMessage.value = ''
@@ -440,6 +510,17 @@ async function synthesize() {
   } finally {
     loading.value = false
   }
+}
+
+function downloadAudio() {
+  if (!audioUrl.value) return
+  
+  const a = document.createElement('a')
+  a.href = audioUrl.value
+  a.download = `fastttsr-${form.model}-${Date.now()}.wav`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
 }
 
 onMounted(async () => {
@@ -479,7 +560,7 @@ body {
   margin: 0 auto;
   background: transparent;
   border-radius: 0;
-  padding: 3rem 2rem;
+  padding: 1.5rem 2rem 2rem;
   box-shadow: none;
   border: none;
 }
@@ -487,15 +568,15 @@ body {
 .demo-content {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 1.25rem;
 }
 
 /* Header */
 .demo-header-wrapper {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  margin-bottom: 1rem;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 .demo-header-icon {
@@ -531,7 +612,7 @@ body {
 .demo-controls {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1rem;
   padding: 0;
   background: transparent;
   border-radius: 0;
@@ -740,7 +821,7 @@ body {
 .demo-params-row {
   display: grid;
   grid-template-columns: 1fr 1fr auto;
-  gap: 2rem;
+  gap: 1.5rem;
   align-items: end;
 }
 
@@ -844,8 +925,8 @@ body {
 
 /* Results */
 .demo-results {
-  min-height: 150px;
-  padding: 2rem;
+  min-height: 120px;
+  padding: 1.5rem;
   background: transparent;
   border: 1px solid #333333;
   border-radius: 0.25rem;
@@ -871,9 +952,131 @@ body {
   font-weight: 300;
 }
 
-.audio-player {
+/* Audio Result Container */
+.audio-result-container {
   width: 100%;
+  background: #1a1a1a;
+  border-radius: 0.25rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.audio-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.audio-result-model {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.model-name {
+  color: #ffffff;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.model-badge {
+  background: #333333;
+  color: #888888;
+  font-size: 0.75rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  font-weight: 500;
+}
+
+.audio-result-metrics {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.125rem;
+}
+
+.metric-value {
+  color: #fbbf24;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.metric-label {
+  color: #888888;
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.audio-player-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.waveform-animation {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.waveform-animation span {
+  width: 2px;
+  height: 8px;
+  background: #888888;
+  border-radius: 1px;
+  transition: all 0.3s ease;
+}
+
+.waveform-animation.playing span {
+  background: #fbbf24;
+  animation: wave 1s ease-in-out infinite;
+}
+
+.waveform-animation.playing span:nth-child(1) { animation-delay: 0s; }
+.waveform-animation.playing span:nth-child(2) { animation-delay: 0.1s; }
+.waveform-animation.playing span:nth-child(3) { animation-delay: 0.2s; }
+.waveform-animation.playing span:nth-child(4) { animation-delay: 0.3s; }
+.waveform-animation.playing span:nth-child(5) { animation-delay: 0.4s; }
+
+@keyframes wave {
+  0%, 100% { height: 8px; }
+  50% { height: 20px; }
+}
+
+.audio-player {
+  flex: 1;
   outline: none;
+}
+
+.download-btn {
+  background: transparent;
+  border: 1px solid #333333;
+  color: #888888;
+  width: 32px;
+  height: 32px;
+  border-radius: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.download-btn:hover {
+  border-color: #fbbf24;
+  color: #fbbf24;
 }
 
 /* Status Box */

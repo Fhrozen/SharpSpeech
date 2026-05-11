@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ref, onBeforeUnmount, watch, nextTick, type Ref } from 'vue'
-import WaveSurfer from 'wavesurfer.js'
+import { ref, watch, type Ref } from 'vue'
 import type { SynthesisMetrics } from '../types'
 
 const props = defineProps<{
@@ -13,64 +12,35 @@ const emit = defineEmits<{
   download: []
 }>()
 
-const waveformContainer: Ref<HTMLDivElement | null> = ref(null)
-const wavesurfer: Ref<WaveSurfer | null> = ref(null)
+const audioElement: Ref<HTMLAudioElement | null> = ref(null)
 const isPlaying = ref(false)
 
-const initWaveSurfer = async () => {
-  if (!waveformContainer.value || !props.audioUrl) return
-
-  // Destroy existing instance
-  if (wavesurfer.value) {
-    wavesurfer.value.destroy()
+const togglePlayPause = () => {
+  if (!audioElement.value) return
+  
+  if (isPlaying.value) {
+    audioElement.value.pause()
+  } else {
+    audioElement.value.play()
   }
-
-  await nextTick()
-
-  wavesurfer.value = WaveSurfer.create({
-    container: waveformContainer.value,
-    waveColor: '#888888',
-    progressColor: '#fbbf24',
-    cursorColor: '#fbbf24',
-    barWidth: 2,
-    barGap: 1,
-    barRadius: 2,
-    height: 60,
-    normalize: true,
-    backend: 'WebAudio',
-    interact: true,
-  })
-
-  wavesurfer.value.on('play', () => {
-    isPlaying.value = true
-  })
-
-  wavesurfer.value.on('pause', () => {
-    isPlaying.value = false
-  })
-
-  wavesurfer.value.on('finish', () => {
-    isPlaying.value = false
-  })
-
-  wavesurfer.value.load(props.audioUrl)
 }
 
-const togglePlayPause = () => {
-  if (wavesurfer.value) {
-    wavesurfer.value.playPause()
-  }
+const handlePlay = () => {
+  isPlaying.value = true
+}
+
+const handlePause = () => {
+  isPlaying.value = false
+}
+
+const handleEnded = () => {
+  isPlaying.value = false
 }
 
 watch(() => props.audioUrl, (newUrl) => {
-  if (newUrl) {
-    initWaveSurfer()
-  }
-}, { immediate: true })
-
-onBeforeUnmount(() => {
-  if (wavesurfer.value) {
-    wavesurfer.value.destroy()
+  if (newUrl && audioElement.value) {
+    // Reset playing state when new audio is loaded
+    isPlaying.value = false
   }
 })
 </script>
@@ -98,18 +68,30 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- Waveform Player -->
-    <div class="waveform-player-container">
+    <!-- Audio Player -->
+    <div class="audio-player-container">
       <button @click="togglePlayPause" class="play-button" :class="{ playing: isPlaying }">
-        <svg v-if="!isPlaying" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+        <svg v-if="!isPlaying" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
           <path d="M8 5v14l11-7z"/>
         </svg>
-        <svg v-else width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+        <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
           <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
         </svg>
       </button>
 
-      <div ref="waveformContainer" class="waveform"></div>
+      <div class="waveform-visualization">
+        <div class="waveform-bars" :class="{ active: isPlaying }">
+          <span v-for="i in 40" :key="i" class="bar"></span>
+        </div>
+        <audio 
+          ref="audioElement"
+          :src="audioUrl"
+          @play="handlePlay"
+          @pause="handlePause"
+          @ended="handleEnded"
+          class="hidden-audio"
+        ></audio>
+      </div>
 
       <button @click="emit('download')" class="download-btn" title="Download audio file">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -177,7 +159,7 @@ onBeforeUnmount(() => {
   font-weight: 400;
 }
 
-.waveform-player-container {
+.audio-player-container {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -204,9 +186,65 @@ onBeforeUnmount(() => {
   color: #fbbf24;
 }
 
-.waveform {
+.waveform-visualization {
   flex: 1;
   min-width: 0;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.hidden-audio {
+  display: none;
+}
+
+.waveform-bars {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 100%;
+  width: 100%;
+}
+
+.bar {
+  width: 3px;
+  height: 20%;
+  background: #888888;
+  border-radius: 2px;
+  transition: all 0.3s ease;
+}
+
+.waveform-bars.active .bar {
+  background: #fbbf24;
+  animation: wave 1.2s ease-in-out infinite;
+}
+
+.waveform-bars.active .bar:nth-child(2n) {
+  animation-delay: 0.1s;
+}
+
+.waveform-bars.active .bar:nth-child(3n) {
+  animation-delay: 0.2s;
+}
+
+.waveform-bars.active .bar:nth-child(4n) {
+  animation-delay: 0.3s;
+}
+
+.waveform-bars.active .bar:nth-child(5n) {
+  animation-delay: 0.4s;
+}
+
+@keyframes wave {
+  0%, 100% {
+    height: 20%;
+  }
+  50% {
+    height: 80%;
+  }
 }
 
 .download-btn {

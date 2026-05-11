@@ -4,6 +4,18 @@ using FastTTSR.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure URLs from environment variables
+var httpPort = Environment.GetEnvironmentVariable("HTTP_PORT") ?? "8080";
+var httpsPort = Environment.GetEnvironmentVariable("HTTPS_PORT");
+
+var urls = new List<string> { $"http://+:{httpPort}" };
+if (!string.IsNullOrWhiteSpace(httpsPort))
+{
+    urls.Add($"https://+:{httpsPort}");
+}
+
+builder.WebHost.UseUrls(urls.ToArray());
+
 builder.Services.Configure<ModelCacheOptions>(builder.Configuration.GetSection(ModelCacheOptions.SectionName));
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IModelCatalog, ModelCatalog>();

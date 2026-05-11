@@ -20,11 +20,18 @@ Web & REST API for TTS (OpenAI-compatible endpoint), with a Vue frontend and Doc
 
 ## Backend API
 
+### Interactive API Documentation
+
+Swagger/OpenAPI documentation is available at:
+- **Swagger UI**: `http://localhost:9090/swagger`
+- **OpenAPI Spec**: `http://localhost:9090/swagger/v1/swagger.json`
+
 ### Endpoints
 
 - `GET /health`
 - `GET /api/models`
-- `POST /v1/audio/speech`
+- `GET /v1/models` (OpenAI compatible)
+- `POST /v1/audio/speech` (OpenAI compatible)
 
 The backend uses a custom TTS engine with:
 - **Direct ONNX inference** via Microsoft.ML.OnnxRuntime for model execution

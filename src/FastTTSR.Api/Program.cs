@@ -8,7 +8,7 @@ builder.Services.Configure<ModelCacheOptions>(builder.Configuration.GetSection(M
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IModelCatalog, ModelCatalog>();
 builder.Services.AddSingleton<IModelCache, ModelCache>();
-builder.Services.AddSingleton<ITtsSynthesizer, SherpaOnnxTtsSynthesizer>();
+builder.Services.AddSingleton<ITtsSynthesizer, KokoroTtsSynthesizer>();
 builder.Services.AddHostedService<ModelWarmupService>();
 
 var app = builder.Build();
@@ -30,6 +30,19 @@ app.MapGet("/api/models", (IModelCatalog modelCatalog) =>
     return Results.Ok(models);
 });
 
+app.MapGet("/v1/models", (IModelCatalog modelCatalog) =>
+{
+    var models = modelCatalog.GetSupportedModels().Select(m => new
+    {
+        id = m.Name,
+        @object = "model",
+        created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+        owned_by = "fastttsr"
+    });
+
+    return Results.Ok(new { data = models, @object = "list" });
+});
+
 app.MapPost("/v1/audio/speech", async (
     OpenAiSpeechRequest request,
     IModelCatalog modelCatalog,
@@ -39,7 +52,7 @@ app.MapPost("/v1/audio/speech", async (
 {
     if (string.IsNullOrWhiteSpace(request.Model) || !modelCatalog.TryGetModel(request.Model, out var model))
     {
-        return Results.BadRequest(new ErrorResponse("unsupported_model", "The selected model is not supported."));
+        return Results.NotFound(new ErrorResponse("model_not_found", "The requested model was not found."));
     }
 
     if (string.IsNullOrWhiteSpace(request.Input))

@@ -53,9 +53,10 @@ public sealed class ModelCatalog : IModelCatalog
         {
             Name = "kokoro-q4",
             DisplayName = "Kokoro Q4",
-            Description = "Kokoro ONNX Q4 model loaded through Sherpa-ONNX runtime.",
+            Description = "Kokoro ONNX Q4 model with direct OnnxRuntime inference.",
             Engine = "kokoro",
             ModelPath = "onnx/model_q4.onnx",
+            TokensPath = "/app/assets/tokens.txt",
             VoicesPath = "voices",
             VoicesBaseUrl = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices",
             VoiceFileExtension = ".bin",
@@ -74,9 +75,10 @@ public sealed class ModelCatalog : IModelCatalog
         {
             Name = "kokoro-full",
             DisplayName = "Kokoro Full",
-            Description = "Kokoro ONNX full model loaded through Sherpa-ONNX runtime.",
+            Description = "Kokoro ONNX full model with direct OnnxRuntime inference.",
             Engine = "kokoro",
             ModelPath = "onnx/model.onnx",
+            TokensPath = "/app/assets/tokens.txt",
             VoicesPath = "voices",
             VoicesBaseUrl = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices",
             VoiceFileExtension = ".bin",
@@ -90,35 +92,6 @@ public sealed class ModelCatalog : IModelCatalog
             ],
             SupportedLanguages = ["en-us", "ja-jp"],
             Speakers = ["af_bella", "af_nicole", "am_adam"]
-        },
-        new()
-        {
-            Name = "supertonic-3",
-            DisplayName = "Supertonic 3",
-            Description = "Supertonic 3 ONNX model loaded through Sherpa-ONNX runtime.",
-            Engine = "vits",
-            ModelPath = "model.onnx",
-            TokensPath = "tokens.txt",
-            Assets =
-            [
-                new TtsModelAsset
-                {
-                    RelativePath = "model.onnx",
-                    Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/model.onnx"
-                },
-                new TtsModelAsset
-                {
-                    RelativePath = "tokens.txt",
-                    Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/tokens.txt"
-                },
-                new TtsModelAsset
-                {
-                    RelativePath = "speakers.json",
-                    Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/speakers.json"
-                }
-            ],
-            SupportedLanguages = ["en", "ko"],
-            Speakers = ["alloy", "aria", "nova"]
         }
     ];
 

@@ -3,9 +3,10 @@
     {
       "name": "kokoro-q4",
       "displayName": "Kokoro Q4",
-      "description": "Kokoro ONNX Q4 model loaded through Sherpa-ONNX runtime.",
+      "description": "Kokoro ONNX Q4 model with direct OnnxRuntime inference.",
       "engine": "kokoro",
       "modelPath": "onnx/model_q4.onnx",
+      "tokensPath": "/app/assets/tokens.txt",
       "voicesPath": "voices",
       "voicesBaseUrl": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices",
       "voiceFileExtension": ".bin",
@@ -21,9 +22,10 @@
     {
       "name": "kokoro-full",
       "displayName": "Kokoro Full",
-      "description": "Kokoro ONNX full model loaded through Sherpa-ONNX runtime.",
+      "description": "Kokoro ONNX full model with direct OnnxRuntime inference.",
       "engine": "kokoro",
       "modelPath": "onnx/model.onnx",
+      "tokensPath": "/app/assets/tokens.txt",
       "voicesPath": "voices",
       "voicesBaseUrl": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices",
       "voiceFileExtension": ".bin",
@@ -35,30 +37,6 @@
       ],
       "supportedLanguages": ["en-us", "ja-jp"],
       "speakers": ["af_bella", "af_nicole", "am_adam"]
-    },
-    {
-      "name": "supertonic-3",
-      "displayName": "Supertonic 3",
-      "description": "Supertonic 3 ONNX model loaded through Sherpa-ONNX runtime.",
-      "engine": "vits",
-      "modelPath": "model.onnx",
-      "tokensPath": "tokens.txt",
-      "assets": [
-        {
-          "relativePath": "model.onnx",
-          "url": "https://huggingface.co/Supertone/supertonic-3/resolve/main/model.onnx"
-        },
-        {
-          "relativePath": "tokens.txt",
-          "url": "https://huggingface.co/Supertone/supertonic-3/resolve/main/tokens.txt"
-        },
-        {
-          "relativePath": "speakers.json",
-          "url": "https://huggingface.co/Supertone/supertonic-3/resolve/main/speakers.json"
-        }
-      ],
-      "supportedLanguages": ["en", "ko"],
-      "speakers": ["alloy", "aria", "nova"]
     }
   ]
 }

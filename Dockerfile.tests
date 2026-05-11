@@ -1,0 +1,30 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0-preview AS build
+WORKDIR /src
+
+# Install espeak-ng native library for Kokoro TTS
+RUN apt-get update && \
+    apt-get install -y libespeak-ng1 espeak-ng-data && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy solution and project files
+COPY FastTTSR.slnx ./
+COPY src/FastTTSR.Api/FastTTSR.Api.csproj src/FastTTSR.Api/
+COPY tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj tests/FastTTSR.Api.Tests/
+COPY tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj tests/FastTTSR.Api.IntegrationTests/
+
+# Restore all projects
+RUN dotnet restore src/FastTTSR.Api/FastTTSR.Api.csproj
+RUN dotnet restore tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj
+RUN dotnet restore tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj
+
+# Copy all source files
+COPY src/ src/
+COPY tests/ tests/
+
+# Build and run tests
+WORKDIR /src
+ENV ESPEAK_DATA_DIR=/app/assets/espeak-ng-data
+# Note: /app/assets should be mounted as a volume with espeak-ng-data
+ENTRYPOINT ["dotnet", "test", "--logger:console;verbosity=detailed", "--no-restore"]
+CMD ["tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj"]

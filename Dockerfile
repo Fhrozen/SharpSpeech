@@ -18,6 +18,15 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0-preview
 WORKDIR /app
 ENV ASPNETCORE_URLS=http://+:8080
 ENV MODEL_CACHE_DIR=/cache
+ENV ESPEAK_DATA_DIR=/app/assets/espeak-ng-data
+
+# Install espeak-ng native library for Kokoro TTS phonemization
+RUN apt-get update && \
+    apt-get install -y libespeak-ng1 espeak-ng-data && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Note: /app/assets should be mounted as a volume with espeak-ng-data and tokens.txt
 VOLUME ["/cache"]
 COPY --from=backend-build /out/ ./
 ENTRYPOINT ["dotnet", "FastTTSR.Api.dll"]

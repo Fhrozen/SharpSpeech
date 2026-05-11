@@ -1,14 +1,14 @@
 services:
   fastttsr:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    image: fhrozen/fast-ttsr:latest
     ports:
-      - "8080:8080"
+      - "9090:8080"
     environment:
       MODEL_CACHE_DIR: /cache
+      ESPEAK_DATA_DIR: /app/assets/espeak-ng-data
     volumes:
-      - model-cache:/cache
-
-volumes:
-  model-cache:
+      - ./model-cache:/cache
+      - ./assets:/app/assets:ro

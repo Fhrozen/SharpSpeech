@@ -49,13 +49,32 @@ pnpm dev
 Build and run with compose:
 
 ```bash
-docker compose up --build
+docker compose build
+docker compose up -d
 ```
 
-The model cache is stored in the `model-cache` volume and mapped to `/cache` in the container.
+The service uses two mounted volumes:
+- `./model-cache` → `/cache` - Downloaded model files (ONNX models, voice files)
+- `./assets` → `/app/assets` - Shared resources (tokens.txt, espeak-ng-data)
+
+### Requirements for Kokoro Models
+
+Kokoro models require:
+1. **tokens.txt** - Mounted from `./assets/tokens.txt` (no download needed)
+2. **espeak-ng-data** - Mounted from `./assets/espeak-ng-data` (no download needed)
+
+The Docker setup uses pre-existing assets from the `./assets` folder. See [assets/README.md](assets/README.md) for details on the assets folder structure.
 
 ## Tests
 
+Unit tests:
 ```bash
 dotnet test tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj
 ```
+
+Integration tests with Docker:
+```bash
+./run-tests.sh
+```
+
+See [TESTING.md](TESTING.md) for comprehensive testing documentation.

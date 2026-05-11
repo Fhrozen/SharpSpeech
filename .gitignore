@@ -76,3 +76,4 @@ Testing/
 frontend/node_modules/
 frontend/dist/
 model-cache/
+references/

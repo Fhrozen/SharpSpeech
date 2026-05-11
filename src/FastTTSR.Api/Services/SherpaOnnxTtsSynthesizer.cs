@@ -1,7 +1,7 @@
-using System.Diagnostics;
 using System.Text;
 using FastTTSR.Api.Contracts;
 using FastTTSR.Api.Models;
+using SherpaOnnx;
 
 namespace FastTTSR.Api.Services;
 
@@ -16,10 +16,9 @@ public sealed class SherpaOnnxTtsSynthesizer : ITtsSynthesizer
         OpenAiSpeechRequest request,
         CancellationToken cancellationToken)
     {
-        var outputPath = TryRunSherpaCli(model, modelDirectory, request, cancellationToken);
-        if (outputPath is not null && File.Exists(outputPath))
+        var bytes = TrySynthesizeWithSherpa(model, modelDirectory, request, cancellationToken);
+        if (bytes is not null && bytes.Length > 0)
         {
-            var bytes = File.ReadAllBytes(outputPath);
             return Task.FromResult(new SynthesisResult(bytes, "audio/wav", $"{model.Name}.wav"));
         }
 
@@ -27,68 +26,109 @@ public sealed class SherpaOnnxTtsSynthesizer : ITtsSynthesizer
         return Task.FromResult(new SynthesisResult(wav, "audio/wav", $"{model.Name}.wav"));
     }
 
-    private static string? TryRunSherpaCli(
+    private static byte[]? TrySynthesizeWithSherpa(
         TtsModelDefinition model,
         string modelDirectory,
         OpenAiSpeechRequest request,
         CancellationToken cancellationToken)
     {
-        var executable = Environment.GetEnvironmentVariable("SHERPA_ONNX_TTS_CLI");
-        if (string.IsNullOrWhiteSpace(executable) || !File.Exists(executable))
-        {
-            return null;
-        }
-
-        var outputPath = Path.Combine(Path.GetTempPath(), $"fastttsr-{Guid.NewGuid():N}.wav");
-        var args = BuildSherpaArguments(model, modelDirectory, request, outputPath);
-        if (args is null)
-        {
-            return null;
-        }
-
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = executable,
-            Arguments = args,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        });
-
-        if (process is null)
-        {
-            return null;
-        }
-
-        process.WaitForExit((int)TimeSpan.FromSeconds(60).TotalMilliseconds);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return process.ExitCode == 0 ? outputPath : null;
+        try
+        {
+            var speed = Math.Clamp(request.Speed, 0.5f, 2.0f);
+            var sid = ResolveSpeakerId(model, request);
+            using var tts = CreateOfflineTts(model, modelDirectory, request);
+            if (tts is null)
+            {
+                return null;
+            }
+
+            var generated = tts.Generate(request.Input, speed, sid);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (generated is null || generated.NumSamples <= 0)
+            {
+                return null;
+            }
+
+            var outputPath = Path.Combine(Path.GetTempPath(), $"fastttsr-{Guid.NewGuid():N}.wav");
+            try
+            {
+                if (!generated.SaveToWaveFile(outputPath))
+                {
+                    return null;
+                }
+
+                return File.ReadAllBytes(outputPath);
+            }
+            finally
+            {
+                generated.Dispose();
+                if (File.Exists(outputPath))
+                {
+                    File.Delete(outputPath);
+                }
+            }
+        }
+        catch
+        {
+            return null;
+        }
     }
 
-    private static string? BuildSherpaArguments(TtsModelDefinition model, string modelDirectory, OpenAiSpeechRequest request, string outputPath)
+    private static OfflineTts? CreateOfflineTts(TtsModelDefinition model, string modelDirectory, OpenAiSpeechRequest request)
     {
-        static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}\"";
-        var text = Quote(request.Input);
+        var config = new OfflineTtsConfig
+        {
+            Model = new OfflineTtsModelConfig
+            {
+                NumThreads = Math.Max(Environment.ProcessorCount, 1),
+                Provider = "cpu"
+            },
+            MaxNumSentences = 2
+        };
 
         if (string.Equals(model.Engine, KokoroEngine, StringComparison.OrdinalIgnoreCase))
         {
-            var speaker = Quote(request.Speaker ?? request.Voice);
-            var modelFile = Path.Combine(modelDirectory, model.ModelPath);
-            var voices = ResolveKokoroVoicePath(model, modelDirectory, request);
-            return $"--kokoro-model {Quote(modelFile)} --kokoro-voices {Quote(voices)} --output-filename {Quote(outputPath)} --text {text} --sid {speaker}";
+            config.Model.Kokoro = new OfflineTtsKokoroModelConfig
+            {
+                Model = Path.Combine(modelDirectory, model.ModelPath),
+                Voices = ResolveKokoroVoicePath(model, modelDirectory, request),
+                Tokens = string.IsNullOrWhiteSpace(model.TokensPath) ? string.Empty : Path.Combine(modelDirectory, model.TokensPath)
+            };
+
+            return new OfflineTts(config);
         }
 
         if (string.Equals(model.Engine, VitsEngine, StringComparison.OrdinalIgnoreCase))
         {
-            var speaker = Quote(request.Speaker ?? request.Voice);
-            var modelFile = Path.Combine(modelDirectory, model.ModelPath);
-            var tokens = Path.Combine(modelDirectory, model.TokensPath ?? "tokens.txt");
-            return $"--vits-model {Quote(modelFile)} --vits-tokens {Quote(tokens)} --output-filename {Quote(outputPath)} --text {text} --sid {speaker}";
+            config.Model.Vits = new OfflineTtsVitsModelConfig
+            {
+                Model = Path.Combine(modelDirectory, model.ModelPath),
+                Tokens = Path.Combine(modelDirectory, model.TokensPath ?? "tokens.txt")
+            };
+
+            return new OfflineTts(config);
         }
 
         return null;
+    }
+
+    private static int ResolveSpeakerId(TtsModelDefinition model, OpenAiSpeechRequest request)
+    {
+        var speaker = request.Speaker ?? request.Voice;
+        if (string.IsNullOrWhiteSpace(speaker))
+        {
+            return 0;
+        }
+
+        var sid = model.Speakers
+            .Select((s, i) => new { Speaker = s, Index = i })
+            .FirstOrDefault(x => string.Equals(x.Speaker, speaker, StringComparison.OrdinalIgnoreCase))
+            ?.Index ?? 0;
+
+        return Math.Max(sid, 0);
     }
 
     private static string ResolveKokoroVoicePath(TtsModelDefinition model, string modelDirectory, OpenAiSpeechRequest request)

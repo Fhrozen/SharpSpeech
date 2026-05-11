@@ -23,8 +23,8 @@ Web & REST API for TTS (OpenAI-compatible endpoint), with a Vue frontend and Doc
 - `GET /api/models`
 - `POST /v1/audio/speech`
 
-Set `SHERPA_ONNX_TTS_CLI` to a sherpa-onnx TTS CLI executable to run model inference through sherpa-onnx.  
-If not set, the service returns generated WAV output for API-flow testing.
+The backend uses in-process Sherpa-ONNX .NET bindings for inference.  
+If direct synthesis cannot be initialized for a request, the service returns generated WAV output for API-flow testing.
 
 Example request:
 

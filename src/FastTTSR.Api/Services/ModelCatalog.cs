@@ -33,7 +33,7 @@ public sealed class ModelCatalog : IModelCatalog
                     "speakers.json"
                 ],
                 SupportedLanguages: ["en", "ko"],
-                Speakers: ["alloy", "aria", "nova"]) 
+                Speakers: ["alloy", "aria", "nova"])
         }
         .ToDictionary(m => m.Name, Comparer);
 

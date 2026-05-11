@@ -36,12 +36,23 @@ public sealed class ModelCache : IModelCache
 
             try
             {
+                var tempPath = $"{outputPath}.tmp";
                 await using var stream = await client.GetStreamAsync(uri, cancellationToken);
-                await using var output = File.Create(outputPath);
-                await stream.CopyToAsync(output, cancellationToken);
+                await using (var output = File.Create(tempPath))
+                {
+                    await stream.CopyToAsync(output, cancellationToken);
+                }
+
+                File.Move(tempPath, outputPath, overwrite: true);
             }
             catch (Exception ex)
             {
+                var tempPath = $"{outputPath}.tmp";
+                if (File.Exists(tempPath))
+                {
+                    File.Delete(tempPath);
+                }
+
                 _logger.LogWarning(ex, "Failed to download model file {File} for {Model}", file, model.Name);
             }
         }

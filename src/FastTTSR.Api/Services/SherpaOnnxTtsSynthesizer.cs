@@ -69,18 +69,20 @@ public sealed class SherpaOnnxTtsSynthesizer : ITtsSynthesizer
         static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}\"";
         var text = Quote(request.Input);
 
-        if (string.Equals(model.Name, "kokoro-tts", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(model.Engine, "kokoro", StringComparison.OrdinalIgnoreCase))
         {
-            var modelFile = Path.Combine(modelDirectory, "kokoro-v1.0.onnx");
-            var voices = Path.Combine(modelDirectory, "voices-v1.0.bin");
-            return $"--kokoro-model {Quote(modelFile)} --kokoro-voices {Quote(voices)} --output-filename {Quote(outputPath)} --text {text} --sid {Quote(request.Speaker ?? request.Voice)}";
+            var speaker = Quote(request.Speaker ?? request.Voice);
+            var modelFile = Path.Combine(modelDirectory, model.ModelPath);
+            var voices = Path.Combine(modelDirectory, model.VoicesPath ?? "voices.bin");
+            return $"--kokoro-model {Quote(modelFile)} --kokoro-voices {Quote(voices)} --output-filename {Quote(outputPath)} --text {text} --sid {speaker}";
         }
 
-        if (string.Equals(model.Name, "supertonic-3", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(model.Engine, "vits", StringComparison.OrdinalIgnoreCase))
         {
-            var modelFile = Path.Combine(modelDirectory, "model.onnx");
-            var tokens = Path.Combine(modelDirectory, "tokens.txt");
-            return $"--vits-model {Quote(modelFile)} --vits-tokens {Quote(tokens)} --output-filename {Quote(outputPath)} --text {text} --sid {Quote(request.Speaker ?? request.Voice)}";
+            var speaker = Quote(request.Speaker ?? request.Voice);
+            var modelFile = Path.Combine(modelDirectory, model.ModelPath);
+            var tokens = Path.Combine(modelDirectory, model.TokensPath ?? "tokens.txt");
+            return $"--vits-model {Quote(modelFile)} --vits-tokens {Quote(tokens)} --output-filename {Quote(outputPath)} --text {text} --sid {speaker}";
         }
 
         return null;

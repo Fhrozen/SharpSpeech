@@ -1,2 +1,5 @@
 packages:
   - .
+allowBuilds:
+  # CI and local setup intentionally avoid dependency install scripts.
+  esbuild: false

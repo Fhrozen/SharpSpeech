@@ -37,7 +37,7 @@ public sealed class SpeechEndpointTests
 
         var response = await client.PostAsJsonAsync("/v1/audio/speech", new OpenAiSpeechRequest
         {
-            Model = "kokoro-tts",
+            Model = "kokoro-q4",
             Input = "hello"
         });
 

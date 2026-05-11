@@ -24,20 +24,20 @@ public sealed class ModelCache : IModelCache
 
         var client = _httpClientFactory.CreateClient();
 
-        foreach (var file in model.Files)
+        foreach (var asset in model.Assets)
         {
-            var outputPath = Path.Combine(targetDirectory, file);
+            var outputPath = Path.Combine(targetDirectory, asset.RelativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+
             if (File.Exists(outputPath))
             {
                 continue;
             }
 
-            var uri = $"https://huggingface.co/{model.HuggingFaceRepository}/resolve/main/{file}";
-
             try
             {
                 var tempPath = $"{outputPath}.tmp";
-                await using var stream = await client.GetStreamAsync(uri, cancellationToken);
+                await using var stream = await client.GetStreamAsync(asset.Url, cancellationToken);
                 await using (var output = File.Create(tempPath))
                 {
                     await stream.CopyToAsync(output, cancellationToken);
@@ -53,7 +53,7 @@ public sealed class ModelCache : IModelCache
                     File.Delete(tempPath);
                 }
 
-                _logger.LogWarning(ex, "Failed to download model file {File} for {Model}", file, model.Name);
+                _logger.LogWarning(ex, "Failed to download model file {File} for {Model}", asset.RelativePath, model.Name);
             }
         }
 

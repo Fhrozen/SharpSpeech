@@ -49,7 +49,7 @@ const audioUrl = ref('')
 const error = ref('')
 const loading = ref(false)
 const form = reactive({
-  model: 'kokoro-tts',
+  model: 'kokoro-q4',
   speaker: '',
   language: '',
   speed: 1,

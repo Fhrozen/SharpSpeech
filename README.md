@@ -6,8 +6,10 @@ Web & REST API for TTS (OpenAI-compatible endpoint), with a Vue frontend and Doc
 
 - C# REST API compatible with `POST /v1/audio/speech`
 - Supported models in API contract:
-  - `kokoro-tts`
+  - `kokoro-q4`
+  - `kokoro-full`
   - `supertonic-3`
+- Model aliases/URLs are loaded from `src/FastTTSR.Api/config.json` (or `MODEL_CONFIG_PATH`)
 - Model download from Hugging Face on startup into cache directory (`MODEL_CACHE_DIR`)
 - Vue.js frontend (pnpm) with model/language/speaker selection
 - Dockerfile and docker-compose for a single service deployment
@@ -28,7 +30,7 @@ Example request:
 ```bash
 curl -X POST http://localhost:8080/v1/audio/speech \
   -H 'Content-Type: application/json' \
-  -d '{"model":"kokoro-tts","input":"Hello world"}' \
+  -d '{"model":"kokoro-q4","input":"Hello world"}' \
   --output speech.wav
 ```
 

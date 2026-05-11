@@ -17,10 +17,12 @@ public sealed class KokoroTtsSynthesizer : ITtsSynthesizer, IDisposable
         OpenAiSpeechRequest request,
         CancellationToken cancellationToken)
     {
+        var startTime = DateTime.UtcNow;
+        
         // Only support Kokoro engine
         if (!string.Equals(model.Engine, KokoroEngine, StringComparison.OrdinalIgnoreCase))
         {
-            return Task.FromResult(GenerateFallbackSilence(model, request));
+            return Task.FromResult(GenerateFallbackSilence(model, request, startTime));
         }
 
         try
@@ -39,18 +41,29 @@ public sealed class KokoroTtsSynthesizer : ITtsSynthesizer, IDisposable
             
             if (audioBytes.Length == 0)
             {
-                return Task.FromResult(GenerateFallbackSilence(model, request));
+                return Task.FromResult(GenerateFallbackSilence(model, request, startTime));
             }
 
             // Generate WAV file with header
             var wavBytes = CreateWavFile(audioBytes, sampleRate: 24000, channels: 1, bitsPerSample: 16);
             
-            return Task.FromResult(new SynthesisResult(wavBytes, "audio/wav", $"{model.Name}.wav"));
+            // Calculate metrics
+            var processingTime = (DateTime.UtcNow - startTime).TotalSeconds;
+            var audioDuration = CalculateAudioDuration(audioBytes.Length, sampleRate: 24000, channels: 1, bitsPerSample: 16);
+            var charCount = request.Input.Length;
+            
+            return Task.FromResult(new SynthesisResult(
+                wavBytes, 
+                "audio/wav", 
+                $"{model.Name}.wav",
+                processingTime,
+                audioDuration,
+                charCount));
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Kokoro synthesis failed: {ex.Message}");
-            return Task.FromResult(GenerateFallbackSilence(model, request));
+            return Task.FromResult(GenerateFallbackSilence(model, request, startTime));
         }
     }
 
@@ -164,7 +177,14 @@ public sealed class KokoroTtsSynthesizer : ITtsSynthesizer, IDisposable
         return stream.ToArray();
     }
 
-    private static SynthesisResult GenerateFallbackSilence(TtsModelDefinition model, OpenAiSpeechRequest request)
+    private static double CalculateAudioDuration(int pcmDataSize, int sampleRate, short channels, short bitsPerSample)
+    {
+        var bytesPerSample = bitsPerSample / 8;
+        var sampleCount = pcmDataSize / (channels * bytesPerSample);
+        return (double)sampleCount / sampleRate;
+    }
+
+    private static SynthesisResult GenerateFallbackSilence(TtsModelDefinition model, OpenAiSpeechRequest request, DateTime startTime)
     {
         const int sampleRate = 24000;
         const short channels = 1;
@@ -197,7 +217,16 @@ public sealed class KokoroTtsSynthesizer : ITtsSynthesizer, IDisposable
         writer.Write(new byte[dataSize]);
         writer.Flush();
 
-        return new SynthesisResult(stream.ToArray(), "audio/wav", $"{model.Name}.wav");
+        var processingTime = (DateTime.UtcNow - startTime).TotalSeconds;
+        var charCount = request.Input.Length;
+
+        return new SynthesisResult(
+            stream.ToArray(), 
+            "audio/wav", 
+            $"{model.Name}.wav",
+            processingTime,
+            durationSeconds,
+            charCount);
     }
 
     public void Dispose()

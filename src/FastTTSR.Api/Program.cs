@@ -97,6 +97,7 @@ app.MapPost("/v1/audio/speech", async (
     IModelCatalog modelCatalog,
     IModelCache modelCache,
     ITtsSynthesizer synthesizer,
+    HttpContext httpContext,
     CancellationToken cancellationToken) =>
 {
     if (string.IsNullOrWhiteSpace(request.Model) || !modelCatalog.TryGetModel(request.Model, out var model))
@@ -111,6 +112,13 @@ app.MapPost("/v1/audio/speech", async (
 
     var modelPath = await modelCache.EnsureModelAsync(model!, cancellationToken);
     var result = await synthesizer.SynthesizeAsync(model!, modelPath, request, cancellationToken);
+
+    // Add metrics to response headers
+    httpContext.Response.Headers["X-Processing-Time"] = result.ProcessingTimeSeconds.ToString("F3");
+    httpContext.Response.Headers["X-Chars-Per-Second"] = result.CharsPerSecond.ToString("F1");
+    httpContext.Response.Headers["X-RTF"] = result.RTF.ToString("F3");
+    httpContext.Response.Headers["X-Audio-Duration"] = result.AudioDurationSeconds.ToString("F2");
+    httpContext.Response.Headers["X-Character-Count"] = result.CharacterCount.ToString();
 
     return Results.File(result.AudioBytes, result.ContentType, fileDownloadName: result.FileName);
 })

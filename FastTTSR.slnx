@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FastTTSR.Api/FastTTSR.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj" />
+  </Folder>
+</Solution>

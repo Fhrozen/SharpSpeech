@@ -9,8 +9,9 @@ const emit = defineEmits<{
 }>()
 
 const formatSpeakerName = (speaker: string): string => {
+  // Remove gender prefix (af_, am_) and capitalize
   return speaker
-    .replace(/^(af|am)_/, (_, prefix) => (prefix === 'af' ? '♀️ ' : '♂️ '))
+    .replace(/^(af|am)_/, '')
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
@@ -67,12 +68,15 @@ const formatSpeakerName = (speaker: string): string => {
 .speaker-item {
   color: #888888;
   cursor: pointer;
-  transition: color 0.2s;
+  transition: all 0.2s;
   font-size: 0.95rem;
   padding: 0;
   background: transparent;
   border: none;
   font-weight: 400;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  padding-bottom: 1px;
 }
 
 .speaker-item:hover {
@@ -81,7 +85,8 @@ const formatSpeakerName = (speaker: string): string => {
 
 .speaker-item.active {
   color: #ffffff;
-  font-weight: 500;
+  font-weight: 400;
+  border-bottom-color: #ffffff;
 }
 
 .speaker-separator {

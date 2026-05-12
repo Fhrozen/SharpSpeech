@@ -92,6 +92,8 @@ The service exposes port 8080 internally, mapped to port 9090 on the host.
 
 ## Tests
 
+### Local Testing
+
 Unit tests:
 ```bash
 dotnet test tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj
@@ -99,8 +101,34 @@ dotnet test tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj
 
 Integration tests with Docker:
 ```bash
-docker compose -f docker-compose.tests.yml up --abort-on-container-exit
+# Run all tests (unit + integration)
+./tests/run-tests.sh all
+
+# Run specific test types
+./tests/run-tests.sh unit
+./tests/run-tests.sh integration
 ```
+
+Or use Docker Compose directly:
+```bash
+docker compose -f docker-compose.test.yml up --abort-on-container-exit
+```
+
+### Continuous Integration
+
+GitHub Actions automatically runs tests on all pull requests:
+
+- **Unit Tests**: Fast, isolated tests (~2 minutes)
+- **Integration Tests**: Full API tests with model downloads (~5-15 minutes)
+- **Test Reports**: Automated test summaries in PR checks
+
+The CI workflow:
+- Runs on PRs to `main`, `master`, or `develop` branches
+- Caches model files (~1-2GB) to speed up subsequent runs
+- Uploads test results and API logs as artifacts
+- Reports test failures directly in PR checks
+
+See [`.github/workflows/README.md`](.github/workflows/README.md) for details.
 
 ## Architecture
 

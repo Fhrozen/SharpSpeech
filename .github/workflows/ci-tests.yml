@@ -1,0 +1,206 @@
+name: CI Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+      - develop
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '*.slnx'
+      - '*.sln'
+      - '.github/workflows/ci-tests.yml'
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup .NET 10.0 Preview
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          dotnet-quality: 'preview'
+      
+      - name: Restore dependencies
+        run: dotnet restore tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj
+      
+      - name: Build test project
+        run: dotnet build tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj --no-restore --configuration Release
+      
+      - name: Run unit tests
+        run: |
+          dotnet test tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj \
+            --no-build \
+            --configuration Release \
+            --logger "trx;LogFileName=unit-test-results.trx" \
+            --logger "console;verbosity=normal" \
+            --results-directory ./test-results
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: test-results/unit-test-results.trx
+          retention-days: 30
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: unit-tests
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup .NET 10.0 Preview
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          dotnet-quality: 'preview'
+      
+      - name: Install espeak-ng
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libespeak-ng1 espeak-ng-data
+          espeak-ng --version
+      
+      - name: Cache model files
+        id: cache-models
+        uses: actions/cache@v4
+        with:
+          path: model-cache
+          key: model-cache-${{ hashFiles('src/FastTTSR.Api/config.json') }}-v1
+          restore-keys: |
+            model-cache-
+      
+      - name: Create model cache directory
+        run: mkdir -p model-cache
+      
+      - name: Restore dependencies
+        run: |
+          dotnet restore src/FastTTSR.Api/FastTTSR.Api.csproj
+          dotnet restore tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj
+      
+      - name: Build API project
+        run: dotnet build src/FastTTSR.Api/FastTTSR.Api.csproj --no-restore --configuration Release
+      
+      - name: Build integration test project
+        run: dotnet build tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj --no-restore --configuration Release
+      
+      - name: Start FastTTSR API service
+        run: |
+          export MODEL_CACHE_DIR="${PWD}/model-cache"
+          export ESPEAK_DATA_DIR="/usr/share/espeak-ng-data"
+          export HTTP_PORT="8080"
+          export ASPNETCORE_ENVIRONMENT="Development"
+          
+          cd src/FastTTSR.Api
+          nohup dotnet run --no-build --configuration Release > ../../api-service.log 2>&1 &
+          echo $! > ../../api-service.pid
+          cd ../..
+          
+          echo "API service started with PID: $(cat api-service.pid)"
+      
+      - name: Wait for API service to be healthy
+        run: |
+          echo "Waiting for API service to be ready..."
+          max_attempts=60
+          attempt=0
+          
+          while [ $attempt -lt $max_attempts ]; do
+            if curl -s -f http://localhost:8080/health > /dev/null 2>&1; then
+              echo "✓ API service is healthy!"
+              curl -s http://localhost:8080/health
+              break
+            fi
+            
+            attempt=$((attempt + 1))
+            echo "Attempt $attempt/$max_attempts - Service not ready yet..."
+            
+            if [ $attempt -eq $max_attempts ]; then
+              echo "✗ API service failed to become healthy within timeout"
+              echo "=== API Service Logs ==="
+              cat api-service.log
+              exit 1
+            fi
+            
+            sleep 5
+          done
+      
+      - name: Run integration tests
+        env:
+          MODEL_CACHE_DIR: ${{ github.workspace }}/model-cache
+          ESPEAK_DATA_DIR: /usr/share/espeak-ng-data
+        run: |
+          dotnet test tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj \
+            --no-build \
+            --configuration Release \
+            --logger "trx;LogFileName=integration-test-results.trx" \
+            --logger "console;verbosity=normal" \
+            --results-directory ./test-results
+      
+      - name: Stop API service
+        if: always()
+        run: |
+          if [ -f api-service.pid ]; then
+            pid=$(cat api-service.pid)
+            echo "Stopping API service (PID: $pid)..."
+            kill $pid || true
+            sleep 2
+            kill -9 $pid 2>/dev/null || true
+          fi
+      
+      - name: Upload API logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-service-logs
+          path: api-service.log
+          retention-days: 30
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: test-results/integration-test-results.trx
+          retention-days: 30
+  
+  test-report:
+    name: Test Report
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+    if: always()
+    
+    steps:
+      - name: Download unit test results
+        uses: actions/download-artifact@v4
+        with:
+          name: unit-test-results
+          path: test-results
+      
+      - name: Download integration test results
+        uses: actions/download-artifact@v4
+        with:
+          name: integration-test-results
+          path: test-results
+      
+      - name: Publish test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Test Results
+          path: 'test-results/*.trx'
+          reporter: dotnet-trx
+          fail-on-error: true
+          fail-on-empty: true

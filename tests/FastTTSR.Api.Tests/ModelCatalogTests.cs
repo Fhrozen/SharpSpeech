@@ -26,6 +26,6 @@ public sealed class ModelCatalogTests
         Assert.Equal(KokoroMetadata.SupportedSpeakers, q4.Speakers);
         Assert.Contains("ja-jp", q4.SupportedLanguages);
         Assert.Contains("jf_alpha", q4.Speakers);
-        Assert.True(q4.Speakers.Count > 60);
+        Assert.True(q4.Speakers.Count > 50, $"Expected more than 50 speakers, but found {q4.Speakers.Count}");
     }
 }

@@ -103,7 +103,7 @@ onMounted(async () => {
   border: none;
   border-left: 4px solid #ffffff;
   padding: 0.75rem 1rem;
-  font-size: 0.95rem;
+  font-size: 1.5rem;
   min-height: 120px;
   outline: none;
   font-family: inherit;

@@ -41,15 +41,22 @@ const emit = defineEmits<{
 }
 
 .model-select {
-  background: transparent;
+  background: #000000;
   color: #ffffff;
   border: 1px solid #333333;
   border-radius: 0.25rem;
-  padding: 0.625rem 0.875rem;
+  padding: 0.625rem 0.22rem;
   font-size: 0.95rem;
   outline: none;
   cursor: pointer;
   transition: border-color 0.2s;
+  max-width: 200px;
+}
+
+.model-select option {
+  background: #000000;
+  color: #ffffff;
+  padding: 0.25rem;
 }
 
 .model-select:hover {

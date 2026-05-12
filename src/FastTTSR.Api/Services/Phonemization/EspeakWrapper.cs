@@ -94,6 +94,13 @@ public sealed class EspeakWrapper : IDisposable
             return null;
         }
 
+        // Additional sanitization to prevent espeak crashes
+        // Remove any remaining non-ASCII characters that might cause issues
+        text = Regex.Replace(text, @"[^\x00-\x7F]+", " ");
+        
+        // Normalize whitespace
+        text = Regex.Replace(text, @"\s+", " ").Trim();
+
         var phonemes = string.Empty;
         foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
         {
@@ -108,10 +115,18 @@ public sealed class EspeakWrapper : IDisposable
 
             if (!string.IsNullOrWhiteSpace(wordCopy))
             {
-                // textmode: espeakCHARS_UTF8=1, phoneme_mode: 0x02 (IPA)
-                var result = espeak_TextToPhonemes(ref wordCopy, 1, 0x02);
-                var phoneme = Marshal.PtrToStringUTF8(result)?.Replace("_", "");
-                phonemes += phoneme;
+                try
+                {
+                    // textmode: espeakCHARS_UTF8=1, phoneme_mode: 0x02 (IPA)
+                    var result = espeak_TextToPhonemes(ref wordCopy, 1, 0x02);
+                    var phoneme = Marshal.PtrToStringUTF8(result)?.Replace("_", "");
+                    phonemes += phoneme;
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Espeak phoneme conversion failed for word '{wordCopy}': {ex.Message}");
+                    // Skip problematic word
+                }
             }
 
             phonemes += punctuation + " ";

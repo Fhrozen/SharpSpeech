@@ -122,8 +122,28 @@ app.MapPost("/v1/audio/speech", async (
         return Results.BadRequest(new ErrorResponse("invalid_request", "Input text is required."));
     }
 
+    // Sanitize input text to prevent TTS engine crashes from special characters
+    var sanitizedInput = TextSanitizer.Sanitize(request.Input);
+    
+    if (string.IsNullOrWhiteSpace(sanitizedInput))
+    {
+        return Results.BadRequest(new ErrorResponse("invalid_request", "Input text contains only unsupported characters."));
+    }
+    
+    // Create sanitized request
+    var sanitizedRequest = new OpenAiSpeechRequest
+    {
+        Model = request.Model,
+        Input = sanitizedInput,
+        Voice = request.Voice,
+        ResponseFormat = request.ResponseFormat,
+        Speed = request.Speed,
+        Language = request.Language,
+        Speaker = request.Speaker
+    };
+
     var modelPath = await modelCache.EnsureModelAsync(model!, cancellationToken);
-    var result = await synthesizer.SynthesizeAsync(model!, modelPath, request, cancellationToken);
+    var result = await synthesizer.SynthesizeAsync(model!, modelPath, sanitizedRequest, cancellationToken);
 
     // Add metrics to response headers
     httpContext.Response.Headers["X-Processing-Time"] = result.ProcessingTimeSeconds.ToString("F3");

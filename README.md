@@ -5,7 +5,7 @@
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](https://www.docker.com/)
 [![OpenAI Compatible](https://img.shields.io/badge/OpenAI-Compatible-00A67E)](https://platform.openai.com/docs/api-reference/audio/createSpeech)
 
-**FastTTSR** is a high-performance Text-to-Speech REST API with OpenAI-compatible endpoints. Built with .NET 10, it features a Vue.js frontend, Docker containerization, and support for multiple state-of-the-art TTS models including Kokoro and Supertonic-3.
+**FastTTSR** is a high-performance Text-to-Speech REST API with OpenAI-compatible endpoints, **highly vibe-coded**:blush:. Built with .NET 10, it features a Vue.js frontend, Docker containerization, and support for multiple state-of-the-art TTS models including Kokoro and Supertonic-3.
 
 ## ✨ Features
 

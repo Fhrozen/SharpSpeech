@@ -10,9 +10,11 @@ namespace FastTTSR.Api.Services;
 /// Manages a pool of <see cref="SupertonicTtsEngine"/> instances (one per model+directory
 /// combination) and delegates synthesis to the appropriate engine.
 /// </summary>
-public sealed class SupertonicTtsSynthesizer : ITtsSynthesizer, IDisposable
+public sealed class SupertonicTtsSynthesizer : ITtsSynthesizer, IIdleTrackingSynthesizer, IDisposable
 {
     private readonly ConcurrentDictionary<string, SupertonicTtsEngine> _engines = new();
+    private readonly ConcurrentDictionary<string, DateTime> _lastAccessTimes = new();
+    private readonly object _engineLock = new();
     private bool _disposed;
 
     public Task<SynthesisResult> SynthesizeAsync(
@@ -85,7 +87,7 @@ public sealed class SupertonicTtsSynthesizer : ITtsSynthesizer, IDisposable
     private SupertonicTtsEngine GetOrCreateEngine(TtsModelDefinition model, string modelDirectory)
     {
         var cacheKey = $"{model.Name}:{modelDirectory}";
-        return _engines.GetOrAdd(cacheKey, _ =>
+        var engine = _engines.GetOrAdd(cacheKey, _ =>
         {
             // modelPath for supertonic-3 is the relative path of the onnx sub-directory
             var onnxDir = Path.Combine(modelDirectory, model.ModelPath);
@@ -97,6 +99,11 @@ public sealed class SupertonicTtsSynthesizer : ITtsSynthesizer, IDisposable
             Console.WriteLine($"[Supertonic-3] Creating engine for {model.Name} from: {onnxDir}");
             return new SupertonicTtsEngine(onnxDir);
         });
+        
+        // Update last access time
+        _lastAccessTimes[cacheKey] = DateTime.UtcNow;
+        
+        return engine;
     }
 
     private static string ResolveSpeaker(TtsModelDefinition model, OpenAiSpeechRequest request)
@@ -233,6 +240,33 @@ public sealed class SupertonicTtsSynthesizer : ITtsSynthesizer, IDisposable
             request.Input.Length);
     }
 
+    public IReadOnlyDictionary<string, DateTime> GetLoadedEngines()
+    {
+        return _lastAccessTimes.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+    }
+
+    public bool TryReleaseEngine(string engineKey)
+    {
+        lock (_engineLock)
+        {
+            if (_engines.TryRemove(engineKey, out var engine))
+            {
+                try
+                {
+                    engine.Dispose();
+                    _lastAccessTimes.TryRemove(engineKey, out _);
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Error disposing Supertonic-3 engine '{engineKey}': {ex.Message}");
+                    return false;
+                }
+            }
+            return false;
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -243,6 +277,7 @@ public sealed class SupertonicTtsSynthesizer : ITtsSynthesizer, IDisposable
         }
 
         _engines.Clear();
+        _lastAccessTimes.Clear();
         _disposed = true;
     }
 }

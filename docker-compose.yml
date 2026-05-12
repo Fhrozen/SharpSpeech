@@ -11,6 +11,7 @@ services:
       HTTPS_PORT: ${HTTPS_PORT:-}
       MODEL_CACHE_DIR: /cache
       ESPEAK_DATA_DIR: /app/assets/espeak-ng-data
+      MODEL_IDLE_TIMEOUT_SECONDS: ${MODEL_IDLE_TIMEOUT_SECONDS:-60}
     volumes:
       - ./model-cache:/cache
       - ./assets:/app/assets:ro

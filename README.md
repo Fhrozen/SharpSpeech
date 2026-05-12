@@ -87,8 +87,19 @@ The service uses mounted volumes:
 Environment variables:
 - `MODEL_CACHE_DIR=/cache` - Model cache directory
 - `ESPEAK_DATA_DIR=/app/assets/espeak-ng-data` - espeak-ng phoneme data
+- `MODEL_IDLE_TIMEOUT_SECONDS=60` - Automatically release models from memory after N seconds of inactivity (default: 60, set to 0 to disable)
 
 The service exposes port 8080 internally, mapped to port 9090 on the host.
+
+### Memory Management
+
+FastTTSR includes automatic model memory management to optimize resource usage:
+
+- Models are loaded on first use and cached in memory for fast subsequent requests
+- After a configurable idle period (default: 60 seconds), unused models are automatically released from memory
+- This helps reduce memory footprint in production deployments while maintaining fast response times for active models
+- Configure the timeout via the `MODEL_IDLE_TIMEOUT_SECONDS` environment variable
+- Set to `0` to disable automatic release and keep all loaded models in memory
 
 ## Tests
 

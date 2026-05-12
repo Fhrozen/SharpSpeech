@@ -5,10 +5,12 @@ using FastTTSR.Api.Models;
 
 namespace FastTTSR.Api.Services;
 
-public sealed class KokoroTtsSynthesizer : ITtsSynthesizer, IDisposable
+public sealed class KokoroTtsSynthesizer : ITtsSynthesizer, IIdleTrackingSynthesizer, IDisposable
 {
     private const string KokoroEngine = "kokoro";
     private readonly ConcurrentDictionary<string, KokoroTtsEngine> _engines = new();
+    private readonly ConcurrentDictionary<string, DateTime> _lastAccessTimes = new();
+    private readonly object _engineLock = new();
     private bool _disposed;
 
     public Task<SynthesisResult> SynthesizeAsync(
@@ -71,7 +73,7 @@ public sealed class KokoroTtsSynthesizer : ITtsSynthesizer, IDisposable
     {
         var cacheKey = $"{model.Name}:{modelDirectory}";
         
-        return _engines.GetOrAdd(cacheKey, _ =>
+        var engine = _engines.GetOrAdd(cacheKey, _ =>
         {
             var modelPath = Path.Combine(modelDirectory, model.ModelPath);
             
@@ -83,6 +85,11 @@ public sealed class KokoroTtsSynthesizer : ITtsSynthesizer, IDisposable
             Console.WriteLine($"Creating Kokoro engine for {model.Name} with model: {modelPath}");
             return new KokoroTtsEngine(modelPath);
         });
+        
+        // Update last access time
+        _lastAccessTimes[cacheKey] = DateTime.UtcNow;
+        
+        return engine;
     }
 
     private void LoadSpeakerVoice(KokoroTtsEngine engine, TtsModelDefinition model, string modelDirectory, OpenAiSpeechRequest request)
@@ -229,6 +236,33 @@ public sealed class KokoroTtsSynthesizer : ITtsSynthesizer, IDisposable
             charCount);
     }
 
+    public IReadOnlyDictionary<string, DateTime> GetLoadedEngines()
+    {
+        return _lastAccessTimes.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+    }
+
+    public bool TryReleaseEngine(string engineKey)
+    {
+        lock (_engineLock)
+        {
+            if (_engines.TryRemove(engineKey, out var engine))
+            {
+                try
+                {
+                    engine.Dispose();
+                    _lastAccessTimes.TryRemove(engineKey, out _);
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Error disposing Kokoro engine '{engineKey}': {ex.Message}");
+                    return false;
+                }
+            }
+            return false;
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -242,6 +276,7 @@ public sealed class KokoroTtsSynthesizer : ITtsSynthesizer, IDisposable
         }
 
         _engines.Clear();
+        _lastAccessTimes.Clear();
         _disposed = true;
     }
 }

@@ -17,6 +17,7 @@ if (!string.IsNullOrWhiteSpace(httpsPort))
 builder.WebHost.UseUrls(urls.ToArray());
 
 builder.Services.Configure<ModelCacheOptions>(builder.Configuration.GetSection(ModelCacheOptions.SectionName));
+builder.Services.Configure<ModelIdleMonitorOptions>(builder.Configuration.GetSection(ModelIdleMonitorOptions.SectionName));
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IModelCatalog, ModelCatalog>();
 builder.Services.AddSingleton<IModelCache, ModelCache>();
@@ -24,6 +25,7 @@ builder.Services.AddSingleton<KokoroTtsSynthesizer>();
 builder.Services.AddSingleton<SupertonicTtsSynthesizer>();
 builder.Services.AddSingleton<ITtsSynthesizer, TtsSynthesizerRouter>();
 builder.Services.AddHostedService<ModelWarmupService>();
+builder.Services.AddHostedService<ModelIdleMonitorService>();
 
 // Add Swagger/OpenAPI support
 builder.Services.AddEndpointsApiExplorer();

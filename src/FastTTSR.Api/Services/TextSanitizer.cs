@@ -51,6 +51,19 @@ public static class TextSanitizer
 
         var sanitized = text;
 
+        // CRITICAL: Handle CJK punctuation FIRST - these cause espeak-ng crashes
+        // Convert Japanese/Chinese punctuation to ASCII equivalents before any other processing
+        // Reference: https://github.com/remsky/Kokoro-FastAPI (normalizer.py)
+        sanitized = sanitized.Replace("、", ", ");   // Japanese comma
+        sanitized = sanitized.Replace("。", ". ");   // Japanese period
+        sanitized = sanitized.Replace("！", "! ");   // Japanese/Chinese exclamation
+        sanitized = sanitized.Replace("，", ", ");   // Chinese comma
+        sanitized = sanitized.Replace("：", ": ");   // Japanese/Chinese colon
+        sanitized = sanitized.Replace("；", "; ");   // Japanese/Chinese semicolon
+        sanitized = sanitized.Replace("？", "? ");   // Japanese/Chinese question mark
+        sanitized = sanitized.Replace("–", "- ");    // en-dash
+        sanitized = sanitized.Replace("—", "- ");    // em-dash
+
         // Remove markdown bullets (•, -, *, + at line starts)
         sanitized = MarkdownBullets.Replace(sanitized, string.Empty);
 

@@ -307,10 +307,69 @@ Check out the [documentation](https://example.com) for more details.
     [Fact]
     public void Sanitize_PreservesJapaneseText()
     {
-        var input = "こんにちは、世界！これは日本語のテストです。";
+        // Japanese text with hiragana and katakana (no punctuation)
+        var input = "こんにちは 世界 これは 日本語の テストです";
 
         var result = TextSanitizer.Sanitize(input, "ja-jp");
 
-        Assert.Equal(input, result);
+        // Japanese characters should be preserved
+        Assert.Contains("こんにちは", result);
+        Assert.Contains("世界", result);
+        Assert.Contains("テスト", result);
+    }
+
+    [Fact]
+    public void Sanitize_NormalizesCjkPunctuation()
+    {
+        // Arrange - Japanese/Chinese punctuation
+        var input = "こんにちは、世界！これは日本語のテストです。";
+
+        // Act
+        var result = TextSanitizer.Sanitize(input, "ja-jp");
+
+        // Assert - CJK punctuation should be converted to ASCII
+        Assert.DoesNotContain("、", result);  // Japanese comma should be removed
+        Assert.DoesNotContain("。", result);  // Japanese period should be removed
+        Assert.DoesNotContain("！", result);  // Japanese exclamation should be removed
+        Assert.Contains(",", result);   // Converted to ASCII comma
+        Assert.Contains(".", result);   // Converted to ASCII period
+        Assert.Contains("!", result);   // Converted to ASCII exclamation
+        // Japanese characters should still be present
+        Assert.Contains("こんにちは", result);
+        Assert.Contains("世界", result);
+    }
+
+    [Fact]
+    public void Sanitize_NormalizesChinesePunctuation()
+    {
+        // Arrange - Chinese punctuation
+        var input = "你好，世界！这是中文测试？";
+
+        // Act
+        var result = TextSanitizer.Sanitize(input);
+
+        // Assert - Chinese punctuation should be converted to ASCII
+        Assert.DoesNotContain("，", result);  // Chinese comma
+        Assert.DoesNotContain("！", result);  // Chinese exclamation
+        Assert.DoesNotContain("？", result);  // Chinese question mark
+        Assert.Contains(",", result);
+        Assert.Contains("!", result);
+        Assert.Contains("?", result);
+    }
+
+    [Fact]
+    public void Sanitize_NormalizesCjkColonsSemicolons()
+    {
+        // Arrange - Japanese/Chinese colons and semicolons
+        var input = "注意：这很重要；请阅读。";
+
+        // Act
+        var result = TextSanitizer.Sanitize(input);
+
+        // Assert
+        Assert.DoesNotContain("：", result);  // Full-width colon
+        Assert.DoesNotContain("；", result);  // Full-width semicolon
+        Assert.Contains(":", result);
+        Assert.Contains(";", result);
     }
 }

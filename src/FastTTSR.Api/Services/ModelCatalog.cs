@@ -38,7 +38,10 @@ public sealed class ModelCatalog : IModelCatalog
                 PropertyNameCaseInsensitive = true
             });
 
-            return parsed?.Models?.Where(m => !string.IsNullOrWhiteSpace(m.Name)).ToArray() ?? [];
+            return parsed?.Models?
+                .Where(m => !string.IsNullOrWhiteSpace(m.Name))
+                .Select(ApplyCanonicalMetadata)
+                .ToArray() ?? [];
         }
         catch (Exception ex)
         {
@@ -49,7 +52,7 @@ public sealed class ModelCatalog : IModelCatalog
 
     private static IReadOnlyList<TtsModelDefinition> GetDefaultModels() =>
     [
-        new()
+        ApplyCanonicalMetadata(new()
         {
             Name = "kokoro-q4",
             DisplayName = "Kokoro Q4",
@@ -67,11 +70,9 @@ public sealed class ModelCatalog : IModelCatalog
                     RelativePath = "onnx/model_q4.onnx",
                     Url = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q4.onnx"
                 }
-            ],
-            SupportedLanguages = ["en-us", "ja-jp"],
-            Speakers = ["af_bella", "af_nicole", "am_adam"]
-        },
-        new()
+            ]
+        }),
+        ApplyCanonicalMetadata(new()
         {
             Name = "kokoro-full",
             DisplayName = "Kokoro Full",
@@ -89,11 +90,33 @@ public sealed class ModelCatalog : IModelCatalog
                     RelativePath = "onnx/model.onnx",
                     Url = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model.onnx"
                 }
-            ],
-            SupportedLanguages = ["en-us", "ja-jp"],
-            Speakers = ["af_bella", "af_nicole", "am_adam"]
-        }
+            ]
+        })
     ];
+
+    private static TtsModelDefinition ApplyCanonicalMetadata(TtsModelDefinition model)
+    {
+        if (!KokoroMetadata.IsKokoroEngine(model.Engine))
+        {
+            return model;
+        }
+
+        return new TtsModelDefinition
+        {
+            Name = model.Name,
+            DisplayName = model.DisplayName,
+            Description = model.Description,
+            Engine = model.Engine,
+            ModelPath = model.ModelPath,
+            VoicesPath = model.VoicesPath,
+            VoicesBaseUrl = model.VoicesBaseUrl,
+            VoiceFileExtension = model.VoiceFileExtension,
+            TokensPath = model.TokensPath,
+            Assets = model.Assets,
+            SupportedLanguages = KokoroMetadata.SupportedLanguages,
+            Speakers = KokoroMetadata.SupportedSpeakers
+        };
+    }
 
     private sealed class ModelCatalogConfig
     {

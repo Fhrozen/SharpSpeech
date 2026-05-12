@@ -122,8 +122,50 @@ app.MapPost("/v1/audio/speech", async (
         return Results.BadRequest(new ErrorResponse("invalid_request", "Input text is required."));
     }
 
+    if (KokoroMetadata.IsKokoroEngine(model!.Engine))
+    {
+        if (!KokoroMetadata.TryNormalizeLanguage(request.Language, out var normalizedLanguage) ||
+            !model.SupportedLanguages.Contains(normalizedLanguage, StringComparer.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest(new ErrorResponse(
+                "invalid_request",
+                $"Unsupported language '{request.Language}'. Supported languages: {string.Join(", ", model.SupportedLanguages)}"));
+        }
+
+        var requestedSpeaker = request.Speaker;
+        if (KokoroMetadata.IsDefaultVoiceValue(requestedSpeaker))
+        {
+            requestedSpeaker = request.Voice;
+        }
+
+        string? normalizedSpeaker = null;
+        if (!KokoroMetadata.IsDefaultVoiceValue(requestedSpeaker))
+        {
+            if (!KokoroMetadata.TryNormalizeSpeaker(requestedSpeaker, out var speakerCandidate) ||
+                !model.Speakers.Contains(speakerCandidate, StringComparer.OrdinalIgnoreCase))
+            {
+                return Results.BadRequest(new ErrorResponse(
+                    "invalid_request",
+                    $"Unsupported speaker '{requestedSpeaker}'. Supported speakers: {string.Join(", ", model.Speakers)}"));
+            }
+
+            normalizedSpeaker = speakerCandidate;
+        }
+
+        request = new OpenAiSpeechRequest
+        {
+            Model = request.Model,
+            Input = request.Input,
+            Voice = normalizedSpeaker ?? request.Voice,
+            ResponseFormat = request.ResponseFormat,
+            Speed = request.Speed,
+            Language = normalizedLanguage,
+            Speaker = normalizedSpeaker
+        };
+    }
+
     // Sanitize input text to prevent TTS engine crashes from special characters
-    var sanitizedInput = TextSanitizer.Sanitize(request.Input);
+    var sanitizedInput = TextSanitizer.Sanitize(request.Input, request.Language);
     
     if (string.IsNullOrWhiteSpace(sanitizedInput))
     {
@@ -157,7 +199,7 @@ app.MapPost("/v1/audio/speech", async (
     .WithName("CreateSpeech")
     .WithTags("OpenAI Compatible")
     .WithSummary("Generate speech from text")
-    .WithDescription("Generates audio from the input text using the specified TTS model. OpenAI-compatible endpoint. Supports kokoro-q4 and kokoro-full models with voices: af_bella, af_nicole, am_adam. Languages: en-us, ja-jp, and more via espeak-ng.")
+    .WithDescription("Generates audio from the input text using the specified TTS model. OpenAI-compatible endpoint. Supports kokoro-q4 and kokoro-full with full Kokoro speaker catalog and languages: en-us, en-gb, es, fr-fr, hi, it, ja-jp, pt-br, zh-cn (plus accepted aliases).")
     .Accepts<OpenAiSpeechRequest>("application/json")
     .Produces<byte[]>(200, "audio/wav")
     .Produces<ErrorResponse>(400)

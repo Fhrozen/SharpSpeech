@@ -63,6 +63,12 @@ public sealed class KokoroTtsEngine : IDisposable
 
     public float[] Synthesize(string text, string language = "en-us", float speed = 1.0f)
     {
+        // KNOWN LIMITATION: Japanese kanji and katakana are not properly phonemized by espeak-ng.
+        // espeak-ng does not have kanji-to-reading conversion, so it may output "character" or
+        // incorrect phonemes. Proper Japanese support would require a kanji-to-romaji converter
+        // like pykakasi, cutlet, or MeCab before phonemization.
+        // For now, Japanese text with kanji/katakana may produce incorrect or English-sounding output.
+        
         // Set espeak voice for the language
         _espeak.SetVoice(language);
 

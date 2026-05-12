@@ -58,9 +58,9 @@ curl -X POST http://localhost:9090/v1/audio/speech \
 Supported parameters:
 - `model`: `kokoro-q4` or `kokoro-full`
 - `input`: Text to synthesize
-- `voice`: Speaker voice (e.g., `af_bella`, `af_nicole`, `am_adam`)
+- `voice`: Speaker voice (full Kokoro speaker catalog exposed by `GET /api/models`; OpenAI aliases like `alloy` are accepted)
 - `speed`: Playback speed (0.5-2.0, default: 1.0)
-- `language`: Language code (e.g., `en-us`, `ja-jp`, default: `en-us`)
+- `language`: Language code (`en-us`, `en-gb`, `es`, `fr-fr`, `hi`, `it`, `ja-jp`, `pt-br`, `zh-cn`; one-letter aliases like `a`, `b`, `j`, `z` are accepted)
 
 ## Frontend
 

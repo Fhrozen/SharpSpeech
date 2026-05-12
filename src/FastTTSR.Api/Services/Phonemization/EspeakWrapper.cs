@@ -15,6 +15,12 @@ public sealed class EspeakWrapper : IDisposable
 
     private static bool _initialized;
     private static readonly object _initLock = new();
+    
+    // Thread-safety lock: espeak_TextToPhonemes() returns a pointer to a static global buffer
+    // that gets reallocated dynamically. Concurrent calls can invalidate pointers, causing
+    // "free(): invalid pointer" crashes, especially with multi-byte UTF-8 text (Japanese, Chinese).
+    private static readonly SemaphoreSlim _espeakLock = new(1, 1);
+    
     private bool _disposed;
 
     public EspeakWrapper(string? dataPath = null)
@@ -83,8 +89,17 @@ public sealed class EspeakWrapper : IDisposable
             return false;
         }
 
-        var result = espeak_SetVoiceByName(voice);
-        return result == Error.EE_OK;
+        // Thread-safe: espeak voice setting modifies internal state
+        _espeakLock.Wait();
+        try
+        {
+            var result = espeak_SetVoiceByName(voice);
+            return result == Error.EE_OK;
+        }
+        finally
+        {
+            _espeakLock.Release();
+        }
     }
 
     public string? ConvertToPhonemes(string text)
@@ -94,18 +109,15 @@ public sealed class EspeakWrapper : IDisposable
             return null;
         }
 
-        // Additional sanitization to prevent espeak crashes
-        // Remove any remaining non-ASCII characters that might cause issues
-        text = Regex.Replace(text, @"[^\x00-\x7F]+", " ");
-        
-        // Normalize whitespace
+        // Normalize whitespace while preserving UTF-8 text
         text = Regex.Replace(text, @"\s+", " ").Trim();
 
         var phonemes = string.Empty;
         foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
         {
             var wordCopy = word;
-            var punctuation = Regex.Match(wordCopy, @"\p{P}*$").Value;
+            // Capture trailing punctuation and symbol marks (currency/math/emojis) so the core word is safely phonemized.
+            var punctuation = Regex.Match(wordCopy, @"[\p{P}\p{S}]*$").Value;
             
             // Remove trailing punctuation for phoneme conversion
             if (!string.IsNullOrEmpty(punctuation))
@@ -117,10 +129,21 @@ public sealed class EspeakWrapper : IDisposable
             {
                 try
                 {
-                    // textmode: espeakCHARS_UTF8=1, phoneme_mode: 0x02 (IPA)
-                    var result = espeak_TextToPhonemes(ref wordCopy, 1, 0x02);
-                    var phoneme = Marshal.PtrToStringUTF8(result)?.Replace("_", "");
-                    phonemes += phoneme;
+                    // CRITICAL: espeak_TextToPhonemes() returns a pointer to a static buffer that can
+                    // be reallocated by concurrent calls. We MUST hold the lock from the espeak call
+                    // through the Marshal.PtrToStringUTF8 copy to prevent pointer invalidation.
+                    _espeakLock.Wait();
+                    try
+                    {
+                        // textmode: espeakCHARS_UTF8=1, phoneme_mode: 0x02 (IPA)
+                        var result = espeak_TextToPhonemes(ref wordCopy, 1, 0x02);
+                        var phoneme = Marshal.PtrToStringUTF8(result)?.Replace("_", "");
+                        phonemes += phoneme;
+                    }
+                    finally
+                    {
+                        _espeakLock.Release();
+                    }
                 }
                 catch (Exception ex)
                 {

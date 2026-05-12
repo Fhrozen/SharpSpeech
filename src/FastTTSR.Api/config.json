@@ -16,8 +16,8 @@
           "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q4.onnx"
         }
       ],
-      "supportedLanguages": ["en-us", "ja-jp"],
-      "speakers": ["af_bella", "af_nicole", "am_adam"]
+      "supportedLanguages": [],
+      "speakers": []
     },
     {
       "name": "kokoro-full",
@@ -35,8 +35,8 @@
           "url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model.onnx"
         }
       ],
-      "supportedLanguages": ["en-us", "ja-jp"],
-      "speakers": ["af_bella", "af_nicole", "am_adam"]
+      "supportedLanguages": [],
+      "speakers": []
     }
   ]
 }

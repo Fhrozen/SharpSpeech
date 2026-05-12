@@ -23,7 +23,7 @@ public sealed class OpenAiSpeechRequest
     public string Input { get; init; } = string.Empty;
 
     /// <summary>
-    /// The voice to use for speech synthesis (e.g., af_bella, af_nicole, am_adam)
+    /// The voice to use for speech synthesis. Accepts canonical Kokoro speaker IDs and OpenAI aliases (alloy, ash, coral, echo, fable, onyx, nova, sage, shimmer).
     /// </summary>
     [DefaultValue("af_bella")]
     public string Voice { get; init; } = "default";
@@ -42,13 +42,14 @@ public sealed class OpenAiSpeechRequest
     public float Speed { get; init; } = 1.0f;
 
     /// <summary>
-    /// The language code for synthesis (e.g., en-us, ja-jp). Defaults to en-us if not specified.
+    /// The language code for synthesis. Supported canonical values: en-us, en-gb, es, fr-fr, hi, it, ja-jp, pt-br, zh-cn.
+    /// One-letter Kokoro API codes and common aliases are also accepted (e.g., a/en-us, b/en-gb, j/ja-jp, z/zh-cn).
     /// </summary>
     [DefaultValue("en-us")]
     public string? Language { get; init; }
 
     /// <summary>
-    /// Alternative to 'Voice' parameter. Specifies the speaker for the model.
+    /// Alternative to 'Voice' parameter. Specifies the speaker for the model and takes precedence when both are provided.
     /// </summary>
     public string? Speaker { get; init; }
 }

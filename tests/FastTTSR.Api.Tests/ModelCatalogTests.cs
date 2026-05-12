@@ -11,11 +11,10 @@ public sealed class ModelCatalogTests
 
         Assert.True(catalog.TryGetModel("kokoro-q4", out _));
         Assert.True(catalog.TryGetModel("kokoro-full", out _));
-        Assert.True(catalog.TryGetModel("supertonic-3", out _));
     }
 
     [Fact]
-    public void Kokoro_models_use_voices_directory_configuration()
+    public void Kokoro_models_expose_canonical_languages_and_speakers()
     {
         var catalog = new ModelCatalog();
 
@@ -23,5 +22,10 @@ public sealed class ModelCatalogTests
         Assert.Equal("voices", q4!.VoicesPath);
         Assert.Equal(".bin", q4.VoiceFileExtension);
         Assert.False(string.IsNullOrWhiteSpace(q4.VoicesBaseUrl));
+        Assert.Equal(KokoroMetadata.SupportedLanguages, q4.SupportedLanguages);
+        Assert.Equal(KokoroMetadata.SupportedSpeakers, q4.Speakers);
+        Assert.Contains("ja-jp", q4.SupportedLanguages);
+        Assert.Contains("jf_alpha", q4.Speakers);
+        Assert.True(q4.Speakers.Count > 60);
     }
 }

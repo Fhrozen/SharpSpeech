@@ -101,6 +101,7 @@ public sealed class EspeakWrapper : IDisposable
         foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
         {
             var wordCopy = word;
+            // Capture trailing punctuation and symbol marks (currency/math/emojis) so the core word is safely phonemized.
             var punctuation = Regex.Match(wordCopy, @"[\p{P}\p{S}]*$").Value;
             
             // Remove trailing punctuation for phoneme conversion

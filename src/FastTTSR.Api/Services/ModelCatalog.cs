@@ -54,6 +54,25 @@ public sealed class ModelCatalog : IModelCatalog
     [
         ApplyCanonicalMetadata(new()
         {
+            Name = "supertonic-3",
+            DisplayName = "Supertonic 3",
+            Description = "Supertonic-3 multilingual ONNX TTS model — 31 languages, 10 preset voice styles, flow-matching inference.",
+            Engine = "supertonic-3",
+            ModelPath = "onnx",
+            VoicesPath = "voice_styles",
+            VoiceFileExtension = ".json",
+            Assets =
+            [
+                new TtsModelAsset { RelativePath = "onnx/text_encoder.onnx",       Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/text_encoder.onnx" },
+                new TtsModelAsset { RelativePath = "onnx/duration_predictor.onnx", Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/duration_predictor.onnx" },
+                new TtsModelAsset { RelativePath = "onnx/vector_estimator.onnx",   Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/vector_estimator.onnx" },
+                new TtsModelAsset { RelativePath = "onnx/vocoder.onnx",            Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/vocoder.onnx" },
+                new TtsModelAsset { RelativePath = "onnx/tts.json",                Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/tts.json" },
+                new TtsModelAsset { RelativePath = "onnx/unicode_indexer.json",    Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/unicode_indexer.json" }
+            ]
+        }),
+        ApplyCanonicalMetadata(new()
+        {
             Name = "kokoro-q4",
             DisplayName = "Kokoro Q4",
             Description = "Kokoro ONNX Q4 model with direct OnnxRuntime inference.",
@@ -96,6 +115,25 @@ public sealed class ModelCatalog : IModelCatalog
 
     private static TtsModelDefinition ApplyCanonicalMetadata(TtsModelDefinition model)
     {
+        if (SupertonicMetadata.IsSupertonic3Engine(model.Engine))
+        {
+            return new TtsModelDefinition
+            {
+                Name               = model.Name,
+                DisplayName        = model.DisplayName,
+                Description        = model.Description,
+                Engine             = model.Engine,
+                ModelPath          = model.ModelPath,
+                VoicesPath         = model.VoicesPath,
+                VoicesBaseUrl      = model.VoicesBaseUrl,
+                VoiceFileExtension = model.VoiceFileExtension,
+                TokensPath         = model.TokensPath,
+                Assets             = model.Assets,
+                SupportedLanguages = SupertonicMetadata.SupportedLanguages,
+                Speakers           = SupertonicMetadata.SupportedSpeakers
+            };
+        }
+
         if (!KokoroMetadata.IsKokoroEngine(model.Engine))
         {
             return model;

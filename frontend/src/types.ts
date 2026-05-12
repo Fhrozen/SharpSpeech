@@ -1,9 +1,16 @@
+export interface SpeakerMetadata {
+  id: string
+  name: string
+  description: string
+}
+
 export interface TtsModel {
   name: string
   displayName: string
   description: string
   supportedLanguages: string[]
   speakers: string[]
+  speakerMetadata?: SpeakerMetadata[]
 }
 
 export interface SynthesisRequest {

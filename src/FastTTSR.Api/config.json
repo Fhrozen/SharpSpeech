@@ -37,6 +37,44 @@
       ],
       "supportedLanguages": [],
       "speakers": []
+    },
+    {
+      "name": "supertonic-3",
+      "displayName": "Supertonic 3",
+      "description": "Supertonic-3 multilingual ONNX TTS model — 31 languages, 10 preset voice styles, flow-matching inference.",
+      "engine": "supertonic-3",
+      "modelPath": "onnx",
+      "voicesPath": "voice_styles",
+      "voicesBaseUrl": "https://huggingface.co/Supertone/supertonic-3/resolve/main/voice_styles",
+      "voiceFileExtension": ".json",
+      "assets": [
+        {
+          "relativePath": "onnx/text_encoder.onnx",
+          "url": "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/text_encoder.onnx"
+        },
+        {
+          "relativePath": "onnx/duration_predictor.onnx",
+          "url": "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/duration_predictor.onnx"
+        },
+        {
+          "relativePath": "onnx/vector_estimator.onnx",
+          "url": "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/vector_estimator.onnx"
+        },
+        {
+          "relativePath": "onnx/vocoder.onnx",
+          "url": "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/vocoder.onnx"
+        },
+        {
+          "relativePath": "onnx/tts.json",
+          "url": "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/tts.json"
+        },
+        {
+          "relativePath": "onnx/unicode_indexer.json",
+          "url": "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/unicode_indexer.json"
+        }
+      ],
+      "supportedLanguages": [],
+      "speakers": []
     }
   ]
 }

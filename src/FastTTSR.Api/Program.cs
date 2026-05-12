@@ -20,7 +20,9 @@ builder.Services.Configure<ModelCacheOptions>(builder.Configuration.GetSection(M
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IModelCatalog, ModelCatalog>();
 builder.Services.AddSingleton<IModelCache, ModelCache>();
-builder.Services.AddSingleton<ITtsSynthesizer, KokoroTtsSynthesizer>();
+builder.Services.AddSingleton<KokoroTtsSynthesizer>();
+builder.Services.AddSingleton<SupertonicTtsSynthesizer>();
+builder.Services.AddSingleton<ITtsSynthesizer, TtsSynthesizerRouter>();
 builder.Services.AddHostedService<ModelWarmupService>();
 
 // Add Swagger/OpenAPI support
@@ -71,12 +73,28 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
 
 app.MapGet("/api/models", (IModelCatalog modelCatalog) =>
 {
-    var models = modelCatalog.GetSupportedModels().Select(m => new ModelDefinitionResponse(
-        m.Name,
-        m.DisplayName,
-        m.Description,
-        m.SupportedLanguages,
-        m.Speakers));
+    var models = modelCatalog.GetSupportedModels().Select(m =>
+    {
+        // Add speaker metadata for Supertonic models
+        IReadOnlyList<SpeakerMetadata>? speakerMetadata = null;
+        if (SupertonicMetadata.IsSupertonic3Engine(m.Engine))
+        {
+            speakerMetadata = m.Speakers
+                .Select(speakerId => new SpeakerMetadata(
+                    speakerId,
+                    SupertonicMetadata.GetSpeakerName(speakerId),
+                    SupertonicMetadata.GetSpeakerDescription(speakerId)))
+                .ToArray();
+        }
+
+        return new ModelDefinitionResponse(
+            m.Name,
+            m.DisplayName,
+            m.Description,
+            m.SupportedLanguages,
+            m.Speakers,
+            speakerMetadata);
+    });
 
     return Results.Ok(models);
 })
@@ -163,6 +181,49 @@ app.MapPost("/v1/audio/speech", async (
             Speaker = normalizedSpeaker
         };
     }
+    else if (SupertonicMetadata.IsSupertonic3Engine(model!.Engine))
+    {
+        // Validate language
+        if (!SupertonicMetadata.TryNormalizeLanguage(request.Language, out var normalizedLanguage) ||
+            !model.SupportedLanguages.Contains(normalizedLanguage, StringComparer.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest(new ErrorResponse(
+                "invalid_request",
+                $"Unsupported language '{request.Language}'. Supported languages: {string.Join(", ", model.SupportedLanguages)}"));
+        }
+
+        // Validate speaker
+        var requestedSpeaker = request.Speaker;
+        if (SupertonicMetadata.IsDefaultVoiceValue(requestedSpeaker))
+        {
+            requestedSpeaker = request.Voice;
+        }
+
+        string? normalizedSpeaker = null;
+        if (!SupertonicMetadata.IsDefaultVoiceValue(requestedSpeaker))
+        {
+            if (!SupertonicMetadata.TryNormalizeSpeaker(requestedSpeaker, out var speakerCandidate) ||
+                !model.Speakers.Contains(speakerCandidate, StringComparer.OrdinalIgnoreCase))
+            {
+                return Results.BadRequest(new ErrorResponse(
+                    "invalid_request",
+                    $"Unsupported speaker '{requestedSpeaker}'. Supported speakers: {string.Join(", ", model.Speakers)}"));
+            }
+
+            normalizedSpeaker = speakerCandidate;
+        }
+
+        request = new OpenAiSpeechRequest
+        {
+            Model          = request.Model,
+            Input          = request.Input,
+            Voice          = normalizedSpeaker ?? request.Voice,
+            ResponseFormat = request.ResponseFormat,
+            Speed          = request.Speed,
+            Language       = normalizedLanguage,
+            Speaker        = normalizedSpeaker
+        };
+    }
 
     // Sanitize input text to prevent TTS engine crashes from special characters
     var sanitizedInput = TextSanitizer.Sanitize(request.Input, request.Language);
@@ -199,7 +260,7 @@ app.MapPost("/v1/audio/speech", async (
     .WithName("CreateSpeech")
     .WithTags("OpenAI Compatible")
     .WithSummary("Generate speech from text")
-    .WithDescription("Generates audio from the input text using the specified TTS model. OpenAI-compatible endpoint. Supports kokoro-q4 and kokoro-full with full Kokoro speaker catalog and languages: en-us, en-gb, es, fr-fr, hi, it, ja-jp, pt-br, zh-cn (plus accepted aliases).")
+    .WithDescription("Generates audio from the input text using the specified TTS model. OpenAI-compatible endpoint. Supports kokoro-q4 and kokoro-full with full Kokoro speaker catalog and languages: en-us, en-gb, es, fr-fr, hi, it, ja-jp, pt-br, zh-cn (plus accepted aliases). Also supports supertonic-3 with 31 languages and 10 preset voice styles (M1–M5, F1–F5).")
     .Accepts<OpenAiSpeechRequest>("application/json")
     .Produces<byte[]>(200, "audio/wav")
     .Produces<ErrorResponse>(400)

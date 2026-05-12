@@ -63,44 +63,62 @@ public sealed class ModelCache : IModelCache
             !string.IsNullOrWhiteSpace(model.VoicesPath) &&
             !string.IsNullOrWhiteSpace(model.VoicesBaseUrl))
         {
-            var voicesDirectory = Path.Combine(targetDirectory, model.VoicesPath);
-            Directory.CreateDirectory(voicesDirectory);
-            var extension = string.IsNullOrWhiteSpace(model.VoiceFileExtension) ? ".bin" : model.VoiceFileExtension;
+            await DownloadVoiceFiles(client, model, targetDirectory, cancellationToken);
+        }
 
-            foreach (var speaker in model.Speakers)
-            {
-                var voiceFileName = $"{speaker}{extension}";
-                var outputPath = Path.Combine(voicesDirectory, voiceFileName);
-                if (File.Exists(outputPath))
-                {
-                    continue;
-                }
-
-                var voiceUrl = $"{model.VoicesBaseUrl.TrimEnd('/')}/{voiceFileName}";
-                var tempPath = $"{outputPath}.tmp";
-
-                try
-                {
-                    await using var stream = await client.GetStreamAsync(voiceUrl, cancellationToken);
-                    await using (var output = File.Create(tempPath))
-                    {
-                        await stream.CopyToAsync(output, cancellationToken);
-                    }
-
-                    File.Move(tempPath, outputPath, overwrite: true);
-                }
-                catch (Exception ex)
-                {
-                    if (File.Exists(tempPath))
-                    {
-                        File.Delete(tempPath);
-                    }
-
-                    _logger.LogWarning(ex, "Failed to download voice file {Voice} for {Model}", voiceFileName, model.Name);
-                }
-            }
+        if (SupertonicMetadata.IsSupertonic3Engine(model.Engine) &&
+            !string.IsNullOrWhiteSpace(model.VoicesPath) &&
+            !string.IsNullOrWhiteSpace(model.VoicesBaseUrl))
+        {
+            await DownloadVoiceFiles(client, model, targetDirectory, cancellationToken);
         }
 
         return targetDirectory;
+    }
+
+    private async Task DownloadVoiceFiles(HttpClient client, TtsModelDefinition model,
+        string targetDirectory, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(model.VoicesPath) || string.IsNullOrWhiteSpace(model.VoicesBaseUrl))
+        {
+            return;
+        }
+
+        var voicesDirectory = Path.Combine(targetDirectory, model.VoicesPath);
+        Directory.CreateDirectory(voicesDirectory);
+        var extension = string.IsNullOrWhiteSpace(model.VoiceFileExtension) ? ".bin" : model.VoiceFileExtension;
+
+        foreach (var speaker in model.Speakers)
+        {
+            var voiceFileName = $"{speaker}{extension}";
+            var outputPath    = Path.Combine(voicesDirectory, voiceFileName);
+            if (File.Exists(outputPath))
+            {
+                continue;
+            }
+
+            var voiceUrl = $"{model.VoicesBaseUrl.TrimEnd('/')}/{voiceFileName}";
+            var tempPath = $"{outputPath}.tmp";
+
+            try
+            {
+                await using var stream = await client.GetStreamAsync(voiceUrl, cancellationToken);
+                await using (var output = File.Create(tempPath))
+                {
+                    await stream.CopyToAsync(output, cancellationToken);
+                }
+
+                File.Move(tempPath, outputPath, overwrite: true);
+            }
+            catch (Exception ex)
+            {
+                if (File.Exists(tempPath))
+                {
+                    File.Delete(tempPath);
+                }
+
+                _logger.LogWarning(ex, "Failed to download voice file {Voice} for {Model}", voiceFileName, model.Name);
+            }
+        }
     }
 }

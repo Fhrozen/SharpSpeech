@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import type { TtsModel, SynthesisRequest, SynthesisMetrics, TextPreset, StatusType } from './types'
+import { presetTexts } from './preset-texts'
 
 import AppHeader from './components/AppHeader.vue'
 import ModelSelector from './components/ModelSelector.vue'
@@ -36,28 +37,29 @@ const form = reactive({
   quality: 8
 })
 
-const presets: TextPreset[] = [
-  {
-    id: 'freeform',
-    label: 'Freeform',
-    text: 'This text-to-speech system runs entirely in your browser, providing fast and private operation without sending any data to external servers.'
-  },
-  {
-    id: 'quote',
-    label: 'Quote',
-    text: '"The only way to do great work is to love what you do." - Steve Jobs'
-  },
-  {
-    id: 'paragraph',
-    label: 'Paragraph',
-    text: 'In the rapidly evolving landscape of artificial intelligence, text-to-speech technology has emerged as a transformative tool for accessibility and user experience. Modern TTS systems leverage deep learning models to produce increasingly natural and expressive speech synthesis, bridging the gap between written content and auditory communication.'
-  },
-  {
-    id: 'script',
-    label: 'Script',
-    text: 'Welcome to our demonstration of advanced speech synthesis! Today, we will explore how machine learning enables computers to speak with remarkable clarity and emotion.'
-  }
-]
+// Language-aware presets that update when form.language changes
+const presets = computed<TextPreset[]>(() => {
+  // Default to English if language not set or not supported in presets
+  const lang = form.language && presetTexts.quote[form.language] ? form.language : 'en'
+  
+  return [
+    {
+      id: 'quote',
+      label: 'Quote',
+      text: presetTexts.quote[lang]
+    },
+    {
+      id: 'paragraph',
+      label: 'Paragraph',
+      text: presetTexts.paragraph[lang]
+    },
+    {
+      id: 'script',
+      label: 'Script',
+      text: presetTexts.script[lang]
+    }
+  ]
+})
 
 const speedRange = { min: 0.5, max: 2.0 }
 const minCharCount = 10
@@ -202,7 +204,8 @@ onMounted(async () => {
           <SpeakerSelector 
             v-if="selectedModel?.speakers && selectedModel.speakers.length > 0"
             v-model="form.speaker" 
-            :speakers="selectedModel.speakers" 
+            :speakers="selectedModel.speakers"
+            :speaker-metadata="selectedModel.speakerMetadata"
           />
           
           <LanguageSelector 

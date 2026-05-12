@@ -73,12 +73,28 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
 
 app.MapGet("/api/models", (IModelCatalog modelCatalog) =>
 {
-    var models = modelCatalog.GetSupportedModels().Select(m => new ModelDefinitionResponse(
-        m.Name,
-        m.DisplayName,
-        m.Description,
-        m.SupportedLanguages,
-        m.Speakers));
+    var models = modelCatalog.GetSupportedModels().Select(m =>
+    {
+        // Add speaker metadata for Supertonic models
+        IReadOnlyList<SpeakerMetadata>? speakerMetadata = null;
+        if (SupertonicMetadata.IsSupertonic3Engine(m.Engine))
+        {
+            speakerMetadata = m.Speakers
+                .Select(speakerId => new SpeakerMetadata(
+                    speakerId,
+                    SupertonicMetadata.GetSpeakerName(speakerId),
+                    SupertonicMetadata.GetSpeakerDescription(speakerId)))
+                .ToArray();
+        }
+
+        return new ModelDefinitionResponse(
+            m.Name,
+            m.DisplayName,
+            m.Description,
+            m.SupportedLanguages,
+            m.Speakers,
+            speakerMetadata);
+    });
 
     return Results.Ok(models);
 })

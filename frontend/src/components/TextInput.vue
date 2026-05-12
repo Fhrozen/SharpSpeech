@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, type Ref } from 'vue'
+import { ref, computed, onMounted, nextTick, watch, type Ref } from 'vue'
 import type { TextPreset } from '../types'
 
 const props = withDefaults(defineProps<{
@@ -15,7 +15,7 @@ const emit = defineEmits<{
 }>()
 
 const textInput: Ref<HTMLDivElement | null> = ref(null)
-const currentPreset = ref('freeform')
+const currentPreset = ref('quote')
 const charCount = computed(() => props.modelValue.length)
 
 const applyPreset = (presetId: string) => {
@@ -32,10 +32,30 @@ const handleInput = (e: Event) => {
   emit('update:modelValue', target.innerText)
 }
 
+// Watch for external modelValue changes (e.g., from language switching)
+watch(() => props.modelValue, (newValue) => {
+  if (textInput.value && textInput.value.innerText !== newValue) {
+    textInput.value.innerText = newValue
+  }
+})
+
+// Watch for preset changes (when language changes, presets update)
+watch(() => props.presets, (newPresets) => {
+  // If a preset is currently selected, update to the new language version
+  if (currentPreset.value !== 'freeform') {
+    const preset = newPresets.find(p => p.id === currentPreset.value)
+    if (preset && textInput.value) {
+      textInput.value.innerText = preset.text
+      emit('update:modelValue', preset.text)
+    }
+  }
+}, { deep: true })
+
 onMounted(async () => {
   await nextTick()
   if (textInput.value && props.presets.length > 0) {
     textInput.value.innerText = props.presets[0].text
+    currentPreset.value = props.presets[0].id
     emit('update:modelValue', props.presets[0].text)
   }
 })

@@ -31,7 +31,7 @@ Applied in `Program.cs` before TTS synthesis:
 Applied immediately before calling espeak_TextToPhonemes:
 
 **Safety Measures:**
-1. Strip all non-ASCII characters (`[^\x00-\x7F]+` → space)
+1. Preserve UTF-8 text (including CJK scripts) while removing unsafe control characters
 2. Normalize whitespace before word-level processing
 3. Wrap espeak P/Invoke call in try-catch to gracefully handle failures
 4. Skip problematic words rather than crashing the entire process
@@ -113,9 +113,8 @@ dotnet test tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj --filter TextSani
 - **No blocking**: All operations are synchronous and fast
 
 ## Known Limitations
-1. **Unicode Text**: Non-English scripts (Chinese, Arabic, Japanese) are stripped to ASCII
-   - **Workaround**: Use the `language` parameter to select proper espeak voice
-   - **Future Enhancement**: Preserve unicode for non-English languages
+1. **Unicode Text**: Non-English scripts are preserved and passed to espeak-ng as UTF-8
+   - Use the `language` parameter to select the correct language/voice mapping for best quality
 
 2. **Parenthetical Information**: Content in parentheses is replaced with spaces
    - **Example**: "Use (English)" → "Use  English"
@@ -126,7 +125,7 @@ dotnet test tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj --filter TextSani
    - **Acceptable**: TTS reads content naturally without visual formatting
 
 ## Future Enhancements
-1. **Language-Aware Sanitization**: Preserve unicode for CJK languages
+1. **Language-Aware Sanitization**: Expand locale-specific punctuation rules and normalization
 2. **Configurable Sanitization Levels**: Allow users to control aggressiveness
 3. **Sanitization Metrics**: Track what was removed for user feedback
 4. **Pre-sanitization Preview**: Show users cleaned text before synthesis

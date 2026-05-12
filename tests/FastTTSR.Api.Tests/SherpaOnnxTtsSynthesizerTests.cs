@@ -9,9 +9,9 @@ public sealed class SherpaOnnxTtsSynthesizerTests
     private static readonly byte[] RiffHeader = [82, 73, 70, 70];
 
     [Fact]
-    public async Task Returns_fallback_wav_when_in_process_sherpa_cannot_initialize()
+    public async Task Returns_fallback_wav_when_kokoro_engine_cannot_initialize()
     {
-        var synthesizer = new SherpaOnnxTtsSynthesizer();
+        var synthesizer = new KokoroTtsSynthesizer();
         var model = new TtsModelDefinition
         {
             Name = "kokoro-q4",
@@ -32,5 +32,7 @@ public sealed class SherpaOnnxTtsSynthesizerTests
         Assert.Equal("audio/wav", result.ContentType);
         Assert.NotEmpty(result.AudioBytes);
         Assert.Equal(RiffHeader, result.AudioBytes.Take(4).ToArray());
+
+        synthesizer.Dispose();
     }
 }

@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Globalization;
 
 namespace FastTTSR.Api.Services;
 
@@ -16,7 +17,6 @@ public static class TextSanitizer
     private static readonly Regex MarkdownFormatting = new(@"[\*_`~]{1,3}([^\*_`~]+)[\*_`~]{1,3}", RegexOptions.Compiled);
     private static readonly Regex ExcessiveWhitespace = new(@"\s{2,}", RegexOptions.Compiled);
     private static readonly Regex ExcessiveNewlines = new(@"\n{3,}", RegexOptions.Compiled);
-    private static readonly Regex ParenthesesWithContent = new(@"\([^\)]*\)", RegexOptions.Compiled);
     
     // Characters that commonly cause TTS engine crashes
     private static readonly HashSet<char> ProblematicChars = new()
@@ -40,8 +40,9 @@ public static class TextSanitizer
     /// special characters, and excessive whitespace.
     /// </summary>
     /// <param name="text">The raw input text</param>
+    /// <param name="language">Optional language hint for future language-aware sanitization</param>
     /// <returns>Sanitized text safe for TTS processing</returns>
-    public static string Sanitize(string text)
+    public static string Sanitize(string text, string? language = null)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -69,6 +70,12 @@ public static class TextSanitizer
         var sb = new StringBuilder(sanitized.Length);
         foreach (var ch in sanitized)
         {
+            var category = char.GetUnicodeCategory(ch);
+            if ((char.IsControl(ch) || category == UnicodeCategory.Format) && ch is not '\n' and not '\r' and not '\t')
+            {
+                continue;
+            }
+
             if (!ProblematicChars.Contains(ch))
             {
                 sb.Append(ch);

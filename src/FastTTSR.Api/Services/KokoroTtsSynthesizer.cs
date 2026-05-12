@@ -87,7 +87,16 @@ public sealed class KokoroTtsSynthesizer : ITtsSynthesizer, IDisposable
 
     private void LoadSpeakerVoice(KokoroTtsEngine engine, TtsModelDefinition model, string modelDirectory, OpenAiSpeechRequest request)
     {
-        var speaker = request.Speaker ?? request.Voice ?? model.Speakers.FirstOrDefault();
+        var speaker = request.Speaker;
+        if (KokoroMetadata.IsDefaultVoiceValue(speaker))
+        {
+            speaker = request.Voice;
+        }
+        if (KokoroMetadata.IsDefaultVoiceValue(speaker))
+        {
+            speaker = model.Speakers.FirstOrDefault();
+        }
+
         if (string.IsNullOrWhiteSpace(speaker))
         {
             return;
@@ -126,22 +135,13 @@ public sealed class KokoroTtsSynthesizer : ITtsSynthesizer, IDisposable
 
     private static string DetermineLanguage(OpenAiSpeechRequest request)
     {
-        // Map common language codes to espeak voices
-        var language = request.Language?.ToLowerInvariant() ?? "en-us";
-        
-        return language switch
+        if (KokoroMetadata.TryNormalizeLanguage(request.Language, out var normalized) &&
+            KokoroMetadata.TryMapToEspeakVoice(normalized, out var espeakVoice))
         {
-            "en" or "en-us" or "english" => "en-us",
-            "ja" or "ja-jp" or "japanese" => "ja",
-            "ko" or "ko-kr" or "korean" => "ko",
-            "es" or "es-es" or "spanish" => "es",
-            "fr" or "fr-fr" or "french" => "fr",
-            "de" or "de-de" or "german" => "de",
-            "it" or "it-it" or "italian" => "it",
-            "pt" or "pt-br" or "portuguese" => "pt",
-            "zh" or "zh-cn" or "chinese" => "zh",
-            _ => "en-us"
-        };
+            return espeakVoice;
+        }
+
+        return "en-us";
     }
 
     private static byte[] CreateWavFile(byte[] pcmData, int sampleRate, short channels, short bitsPerSample)

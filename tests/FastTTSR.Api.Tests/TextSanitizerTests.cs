@@ -93,10 +93,10 @@ public class TextSanitizerTests
         var result = TextSanitizer.Sanitize(input);
 
         // Assert
-        Assert.DoesNotContain("\u2022", result); // bullet
-        Assert.DoesNotContain("\u00A0", result); // non-breaking space
-        Assert.DoesNotContain("\u200B", result); // zero-width space
-        Assert.DoesNotContain("\uFEFF", result); // BOM
+        Assert.DoesNotContain('\u2022', result); // bullet
+        Assert.DoesNotContain('\u00A0', result); // non-breaking space
+        Assert.DoesNotContain('\u200B', result); // zero-width space
+        Assert.DoesNotContain('\uFEFF', result); // BOM
         Assert.Contains("Text", result);
         Assert.Contains("with", result);
         Assert.Contains("special", result);
@@ -302,5 +302,15 @@ Check out the [documentation](https://example.com) for more details.
         Assert.Contains("2024-01-15", result);
         Assert.Contains("3:30", result);
         Assert.Contains("$50.00", result);
+    }
+
+    [Fact]
+    public void Sanitize_PreservesJapaneseText()
+    {
+        var input = "こんにちは、世界！これは日本語のテストです。";
+
+        var result = TextSanitizer.Sanitize(input, "ja-jp");
+
+        Assert.Equal(input, result);
     }
 }

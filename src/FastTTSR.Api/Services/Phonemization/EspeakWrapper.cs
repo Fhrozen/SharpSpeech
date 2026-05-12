@@ -94,18 +94,14 @@ public sealed class EspeakWrapper : IDisposable
             return null;
         }
 
-        // Additional sanitization to prevent espeak crashes
-        // Remove any remaining non-ASCII characters that might cause issues
-        text = Regex.Replace(text, @"[^\x00-\x7F]+", " ");
-        
-        // Normalize whitespace
+        // Normalize whitespace while preserving UTF-8 text
         text = Regex.Replace(text, @"\s+", " ").Trim();
 
         var phonemes = string.Empty;
         foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
         {
             var wordCopy = word;
-            var punctuation = Regex.Match(wordCopy, @"\p{P}*$").Value;
+            var punctuation = Regex.Match(wordCopy, @"[\p{P}\p{S}]*$").Value;
             
             // Remove trailing punctuation for phoneme conversion
             if (!string.IsNullOrEmpty(punctuation))

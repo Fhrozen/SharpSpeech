@@ -9,10 +9,14 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0-preview AS backend-build
 WORKDIR /src
 COPY FastTTSR.slnx ./
 COPY src/FastTTSR.Api/FastTTSR.Api.csproj src/FastTTSR.Api/
+COPY src/FastTTSR.Worker/FastTTSR.Worker.csproj src/FastTTSR.Worker/
 RUN dotnet restore src/FastTTSR.Api/FastTTSR.Api.csproj
+RUN dotnet restore src/FastTTSR.Worker/FastTTSR.Worker.csproj
 COPY src/FastTTSR.Api/ src/FastTTSR.Api/
+COPY src/FastTTSR.Worker/ src/FastTTSR.Worker/
 COPY --from=frontend-build /app/frontend/dist/ src/FastTTSR.Api/wwwroot/
-RUN dotnet publish src/FastTTSR.Api/FastTTSR.Api.csproj -c Release -o /out /p:UseAppHost=false
+RUN dotnet publish src/FastTTSR.Api/FastTTSR.Api.csproj -c Release -o /out/api /p:UseAppHost=false
+RUN dotnet publish src/FastTTSR.Worker/FastTTSR.Worker.csproj -c Release -o /out/worker /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-preview
 WORKDIR /app
@@ -28,5 +32,11 @@ RUN apt-get update && \
 
 # Note: /app/assets should be mounted as a volume with espeak-ng-data and tokens.txt
 VOLUME ["/cache"]
-COPY --from=backend-build /out/ ./
+COPY --from=backend-build /out/api/ ./
+COPY --from=backend-build /out/worker/ ./worker/
+RUN chmod +x ./worker/FastTTSR.Worker
+
+# Update worker executable path for container environment
+ENV WorkerOptions__ExecutablePath=/app/worker/FastTTSR.Worker
+
 ENTRYPOINT ["dotnet", "FastTTSR.Api.dll"]

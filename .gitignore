@@ -77,3 +77,6 @@ frontend/node_modules/
 frontend/dist/
 model-cache/
 references/
+
+# Docker-based dotnet wrapper cache
+.docker-cache/

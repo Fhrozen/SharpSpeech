@@ -14,7 +14,7 @@ public sealed class WorkerProxySynthesizer : ITtsSynthesizer, IDisposable
     private readonly WorkerProcessManager _processManager;
     private readonly IModelCache _modelCache;
     private readonly ILogger<WorkerProxySynthesizer> _logger;
-    private readonly ConcurrentDictionary<string, GrpcChannel> _channels = new();
+    private readonly ConcurrentDictionary<string, (GrpcChannel Channel, int Port)> _channels = new();
     private bool _disposed;
 
     public WorkerProxySynthesizer(
@@ -40,7 +40,7 @@ public sealed class WorkerProxySynthesizer : ITtsSynthesizer, IDisposable
             // Get or spawn worker for this model
             var worker = await _processManager.GetOrSpawnWorkerAsync(modelKey, cancellationToken);
 
-            // Get or create gRPC channel
+            // Get or create gRPC channel (invalidate if port changed)
             var channel = GetOrCreateChannel(modelKey, worker.Port);
             var client = new WorkerSynthesis.WorkerSynthesisClient(channel);
 
@@ -64,8 +64,8 @@ public sealed class WorkerProxySynthesizer : ITtsSynthesizer, IDisposable
                 Language = request.Language ?? "en-us"
             };
 
-            _logger.LogInformation("Sending synthesis request to worker {ModelKey}: speed={Speed}, voice={Voice}", 
-                modelKey, request.Speed, request.Voice);
+            _logger.LogInformation("Sending synthesis request to worker {ModelKey} on port {Port}: speed={Speed}, voice={Voice}, input_length={Length}", 
+                modelKey, worker.Port, request.Speed, request.Voice, request.Input.Length);
 
             grpcRequest.SupportedLanguages.AddRange(model.SupportedLanguages);
             grpcRequest.Speakers.AddRange(model.Speakers);
@@ -104,17 +104,43 @@ public sealed class WorkerProxySynthesizer : ITtsSynthesizer, IDisposable
 
     private GrpcChannel GetOrCreateChannel(string modelKey, int port)
     {
-        return _channels.GetOrAdd(modelKey, _ =>
+        // Check if cached channel exists and if port matches
+        if (_channels.TryGetValue(modelKey, out var cached))
         {
-            var address = $"http://localhost:{port}";
-            _logger.LogInformation("Creating gRPC channel for {ModelKey}: {Address}", modelKey, address);
-            
-            return GrpcChannel.ForAddress(address, new GrpcChannelOptions
+            if (cached.Port == port)
             {
-                MaxReceiveMessageSize = 100 * 1024 * 1024, // 100 MB for large audio files
-                MaxSendMessageSize = 10 * 1024 * 1024 // 10 MB for requests
-            });
+                _logger.LogDebug("Reusing cached gRPC channel for {ModelKey} on port {Port}", modelKey, port);
+                return cached.Channel;
+            }
+            
+            // Port changed, dispose old channel and create new one
+            _logger.LogInformation("Worker port changed for {ModelKey}: {OldPort} -> {NewPort}. Recreating channel.", 
+                modelKey, cached.Port, port);
+            
+            try
+            {
+                cached.Channel.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error disposing old channel for {ModelKey}", modelKey);
+            }
+            
+            _channels.TryRemove(modelKey, out _);
+        }
+
+        // Create new channel
+        var address = $"http://localhost:{port}";
+        _logger.LogInformation("Creating gRPC channel for {ModelKey}: {Address}", modelKey, address);
+        
+        var channel = GrpcChannel.ForAddress(address, new GrpcChannelOptions
+        {
+            MaxReceiveMessageSize = 100 * 1024 * 1024, // 100 MB for large audio files
+            MaxSendMessageSize = 10 * 1024 * 1024 // 10 MB for requests
         });
+        
+        _channels[modelKey] = (channel, port);
+        return channel;
     }
 
     private static SynthesisResult GenerateFallbackSilence(TtsModelDefinition model, OpenAiSpeechRequest request)
@@ -165,7 +191,7 @@ public sealed class WorkerProxySynthesizer : ITtsSynthesizer, IDisposable
     {
         if (_disposed) return;
 
-        foreach (var channel in _channels.Values)
+        foreach (var (channel, _) in _channels.Values)
         {
             try
             {

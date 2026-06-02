@@ -31,15 +31,20 @@ public sealed class WorkerSynthesisService : WorkerSynthesis.WorkerSynthesisBase
         {
             Console.WriteLine($"[Worker] Synthesize request: engine={request.Engine}, model={request.ModelName}");
 
-            // Determine which engine to use
+            // Determine which engine to use and get correct sample rate
             byte[] audioBytes;
+            int sampleRate;
+            
             if (string.Equals(request.Engine, "kokoro", StringComparison.OrdinalIgnoreCase))
             {
+                sampleRate = 24000; // Kokoro always uses 24000 Hz
                 audioBytes = await SynthesizeWithKokoroAsync(request, context.CancellationToken);
             }
             else if (string.Equals(request.Engine, "supertonic", StringComparison.OrdinalIgnoreCase) ||
                      string.Equals(request.Engine, "supertonic-3", StringComparison.OrdinalIgnoreCase))
             {
+                var engine = GetOrCreateSupertonicEngine(request);
+                sampleRate = engine.SampleRate; // Get actual sample rate (22050 Hz for Supertonic-3)
                 audioBytes = await SynthesizeWithSupertonicAsync(request, context.CancellationToken);
             }
             else
@@ -49,18 +54,20 @@ public sealed class WorkerSynthesisService : WorkerSynthesis.WorkerSynthesisBase
 
             if (audioBytes.Length == 0)
             {
+                sampleRate = 24000; // Fallback uses 24000 Hz
                 audioBytes = GenerateFallbackSilence(request);
             }
 
-            // Generate WAV file with header
-            var wavBytes = CreateWavFile(audioBytes, sampleRate: 24000, channels: 1, bitsPerSample: 16);
+            // Generate WAV file with header using correct sample rate
+            var wavBytes = CreateWavFile(audioBytes, sampleRate: sampleRate, channels: 1, bitsPerSample: 16);
 
             // Calculate metrics
             var processingTime = (DateTime.UtcNow - startTime).TotalSeconds;
-            var audioDuration = CalculateAudioDuration(audioBytes.Length, sampleRate: 24000, channels: 1, bitsPerSample: 16);
+            var audioDuration = CalculateAudioDuration(audioBytes.Length, sampleRate: sampleRate, channels: 1, bitsPerSample: 16);
             var charCount = request.Input.Length;
 
-            Console.WriteLine($"[Worker] Synthesis complete: {charCount} chars, {processingTime:F2}s processing, {audioDuration:F2}s audio");
+            Console.WriteLine($"[Worker] Synthesis complete: {charCount} chars, {processingTime:F2}s processing, {audioDuration:F2}s audio, sampleRate={sampleRate} Hz");
+            // Console.Error.WriteLine($"[Worker] Synthesis complete: {charCount} chars, {processingTime:F2}s processing, {audioDuration:F2}s audio, sampleRate={sampleRate} Hz");
 
             return new SynthesizeResponse
             {
@@ -98,7 +105,7 @@ public sealed class WorkerSynthesisService : WorkerSynthesis.WorkerSynthesisBase
     private async Task<byte[]> SynthesizeWithKokoroAsync(SynthesizeRequest request, CancellationToken cancellationToken)
     {
         var engine = GetOrCreateKokoroEngine(request);
-        var speed = Math.Clamp(request.Speed, 0.5f, 2.0f);
+        var speed = Math.Clamp(request.Speed, 0.5f, 4.0f);
         var language = DetermineLanguage(request);
 
         // Load speaker voice if needed
@@ -113,16 +120,30 @@ public sealed class WorkerSynthesisService : WorkerSynthesis.WorkerSynthesisBase
     private async Task<byte[]> SynthesizeWithSupertonicAsync(SynthesizeRequest request, CancellationToken cancellationToken)
     {
         var engine = GetOrCreateSupertonicEngine(request);
-        var speed = Math.Clamp(request.Speed, 0.5f, 2.0f);
+        var speed = Math.Clamp(request.Speed, 0.5f, 4.0f);
         var language = string.IsNullOrWhiteSpace(request.Language) ? "en" : request.Language;
         var style = LoadSupertonicStyle(request);
 
-        Console.WriteLine($"[Worker] Supertonic synthesis: speed={speed}, language={language}");
+        // Console.WriteLine($"[Worker] Supertonic synthesis: input_speed={request.Speed}, clamped_speed={speed}, language={language}, voice={request.Voice}, input_length={request.Input.Length}");
+        // Console.Error.WriteLine($"[Worker] Supertonic synthesis: input_speed={request.Speed}, clamped_speed={speed}, language={language}, voice={request.Voice}, input_length={request.Input.Length}");
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Perform synthesis on thread pool
-        return await Task.Run(() => engine.SynthesizeToBytes(request.Input, language, style, 8, speed), cancellationToken);
+        // Perform synthesis on thread pool - USE NAMED PARAMETERS
+        var audioBytes = await Task.Run(() => 
+            engine.SynthesizeToBytes(
+                text: request.Input, 
+                lang: language, 
+                style: style, 
+                totalStep: 8, 
+                speed: speed
+            ), 
+            cancellationToken);
+        
+        // Console.WriteLine($"[Worker] Supertonic synthesis complete: audio_size={audioBytes.Length} bytes, used_speed={speed}");
+        // Console.Error.WriteLine($"[Worker] Supertonic synthesis complete: audio_size={audioBytes.Length} bytes, used_speed={speed}");
+        
+        return audioBytes;
     }
 
     private KokoroTtsEngine GetOrCreateKokoroEngine(SynthesizeRequest request)

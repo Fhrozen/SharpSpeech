@@ -149,8 +149,12 @@ app.MapPost("/v1/audio/speech", async (
     IModelCache modelCache,
     ITtsSynthesizer synthesizer,
     HttpContext httpContext,
+    ILogger<Program> logger,
     CancellationToken cancellationToken) =>
 {
+    // logger.LogInformation("[API] Received /v1/audio/speech request: model={Model}, speed={Speed}, voice={Voice}, language={Language}, input_length={Length}",
+    //     request.Model, request.Speed, request.Voice, request.Language ?? "null", request.Input?.Length ?? 0);
+    
     if (string.IsNullOrWhiteSpace(request.Model) || !modelCatalog.TryGetModel(request.Model, out var model))
     {
         return Results.NotFound(new ErrorResponse("model_not_found", "The requested model was not found."));
@@ -265,6 +269,9 @@ app.MapPost("/v1/audio/speech", async (
         Language = request.Language,
         Speaker = request.Speaker
     };
+
+    // logger.LogInformation("[API] Speech synthesis request: model={Model}, speed={Speed}, voice={Voice}, language={Language}, input_length={Length}",
+    //     request.Model, request.Speed, request.Voice, request.Language, request.Input.Length);
 
     var modelPath = await modelCache.EnsureModelAsync(model!, cancellationToken);
     var result = await synthesizer.SynthesizeAsync(model!, modelPath, sanitizedRequest, cancellationToken);

@@ -161,6 +161,11 @@ public sealed class SupertonicTtsEngine : IDisposable
         var textIdsLengths = processedTexts.Select(t => (long)t.Length).ToArray();
         long maxLen = textIdsLengths.Max();
 
+        // Console.WriteLine($"[SupertonicEngine.Infer] batch_size={bsz}, processed_texts_count={processedTexts.Count}, max_length={maxLen}");
+        // Console.Error.WriteLine($"[SupertonicEngine.Infer] batch_size={bsz}, processed_texts_count={processedTexts.Count}, max_length={maxLen}");
+        // Console.WriteLine($"[SupertonicEngine.Infer] text_ids_lengths=[{string.Join(", ", textIdsLengths)}]");
+        // Console.Error.WriteLine($"[SupertonicEngine.Infer] text_ids_lengths=[{string.Join(", ", textIdsLengths)}]");
+
         // Build textIds 2D array [bsz, maxLen]
         var textIdsFlat = new long[bsz * maxLen];
         for (int b = 0; b < bsz; b++)
@@ -194,14 +199,44 @@ public sealed class SupertonicTtsEngine : IDisposable
         float[] duration;
         using (var dpOutputs = _dpOrt.Run(dpInputs))
         {
-            duration = dpOutputs.First(o => o.Name == "duration").AsTensor<float>().ToArray();
+            var durationTensor = dpOutputs.First(o => o.Name == "duration").AsTensor<float>();
+            duration = durationTensor.ToArray();
+            
+            // Console.WriteLine($"[SupertonicEngine.Infer] Duration predictor output: shape=[{string.Join("x", durationTensor.Dimensions.ToArray())}], length={duration.Length}");
+            // Console.Error.WriteLine($"[SupertonicEngine.Infer] Duration predictor output: shape=[{string.Join("x", durationTensor.Dimensions.ToArray())}], length={duration.Length}");
+            
+            // if (duration.Length <= 10)
+            // {
+            //     Console.WriteLine($"[SupertonicEngine.Infer] Duration values: [{string.Join(", ", duration.Select(d => d.ToString("F4")))}]");
+            //     Console.Error.WriteLine($"[SupertonicEngine.Infer] Duration values: [{string.Join(", ", duration.Select(d => d.ToString("F4")))}]");
+            // }
+            // else
+            // {
+            //     Console.WriteLine($"[SupertonicEngine.Infer] First 10 duration values: [{string.Join(", ", duration.Take(10).Select(d => d.ToString("F4")))}]");
+            //     Console.Error.WriteLine($"[SupertonicEngine.Infer] First 10 duration values: [{string.Join(", ", duration.Take(10).Select(d => d.ToString("F4")))}]");
+            // }
         }
 
         // Apply speed factor
+        // Console.WriteLine($"[SupertonicEngine] Applying speed factor: speed={speed}, duration_count={duration.Length}");
+        // Console.Error.WriteLine($"[SupertonicEngine] Applying speed factor: speed={speed}, duration_count={duration.Length}");
+        
+        // if (duration.Length >= 3)
+        // {
+        //     Console.WriteLine($"[SupertonicEngine] First 3 durations before: [{duration[0]:F4}, {duration[1]:F4}, {duration[2]:F4}]");
+        //     Console.Error.WriteLine($"[SupertonicEngine] First 3 durations before: [{duration[0]:F4}, {duration[1]:F4}, {duration[2]:F4}]");
+        // }
+        
         for (int i = 0; i < duration.Length; i++)
         {
             duration[i] /= speed;
         }
+        
+        // if (duration.Length >= 3)
+        // {
+        //     Console.WriteLine($"[SupertonicEngine] First 3 durations after: [{duration[0]:F4}, {duration[1]:F4}, {duration[2]:F4}]");
+        //     Console.Error.WriteLine($"[SupertonicEngine] First 3 durations after: [{duration[0]:F4}, {duration[1]:F4}, {duration[2]:F4}]");
+        // }
 
         // ── Text encoder ──
         var textEncInputs = new List<NamedOnnxValue>

@@ -55,6 +55,362 @@ FastTTSR is designed as a high-performance, production-ready Text-to-Speech serv
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+## Worker Process Architecture (New)
+
+FastTTSR now supports a **worker process mode** that isolates model loading and inference into separate processes. This provides true memory isolation and guaranteed cleanup when models become idle.
+
+### Architecture Overview - Worker Mode
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                    FastTTSR.Api (Main Process)                     │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │                   HTTP Endpoints Layer                        │ │
+│  │           /v1/audio/speech | /api/models | /health           │ │
+│  └──────────────────────┬───────────────────────────────────────┘ │
+│                         │                                          │
+│  ┌──────────────────────▼───────────────────────────────────────┐ │
+│  │              WorkerProxySynthesizer                          │ │
+│  │  - Routes requests to worker processes via gRPC              │ │
+│  │  - Maintains gRPC channel pool                               │ │
+│  │  - Handles worker failures gracefully                        │ │
+│  └──────────────────────┬───────────────────────────────────────┘ │
+│                         │                                          │
+│  ┌──────────────────────▼───────────────────────────────────────┐ │
+│  │           WorkerProcessManager (IHostedService)              │ │
+│  │  - Spawns worker processes on-demand                         │ │
+│  │  - Allocates ports dynamically                               │ │
+│  │  - Monitors worker health and lifecycle                      │ │
+│  │  - Cleans up terminated workers                              │ │
+│  └──────────────────────┬───────────────────────────────────────┘ │
+└────────────────────────┼────────────────────────────────────────────┘
+                         │ gRPC (localhost:5005X)
+                         │
+         ┌───────────────┼───────────────┐
+         │               │               │
+┌────────▼─────┐  ┌──────▼──────┐  ┌────▼───────────┐
+│Worker Process│  │Worker Process│  │Worker Process │
+│  (kokoro-q4) │  │(supertonic-3)│  │  (kokoro-f)   │
+├──────────────┤  ├─────────────┤  ├───────────────┤
+│ gRPC Server  │  │ gRPC Server │  │ gRPC Server   │
+│ Port: 50051  │  │ Port: 50052 │  │ Port: 50053   │
+├──────────────┤  ├─────────────┤  ├───────────────┤
+│ Idle Monitor │  │ Idle Monitor│  │ Idle Monitor  │
+│ Timeout: 60s │  │ Timeout: 60s│  │ Timeout: 60s  │
+├──────────────┤  ├─────────────┤  ├───────────────┤
+│ Model Engine │  │ Model Engine│  │ Model Engine  │
+│ ONNX Runtime │  │ ONNX Runtime│  │ ONNX Runtime  │
+│ espeak-ng    │  │ espeak-ng   │  │ espeak-ng     │
+└──────────────┘  └─────────────┘  └───────────────┘
+     │                  │                 │
+     └──────────────────┴─────────────────┘
+              Process.Exit(0)
+              after idle timeout
+```
+
+### Key Benefits
+
+1. **True Memory Isolation** - Each model runs in its own OS process
+2. **Guaranteed Cleanup** - OS reclaims ALL memory when worker terminates
+3. **Fault Isolation** - Worker crashes don't affect API process
+4. **Automatic Respawn** - Failed workers restart on next request
+5. **Reduced Base Memory** - API process stays lightweight (~50MB vs ~300MB+)
+
+### Component Details
+
+#### WorkerProcessManager
+
+**Purpose:** Spawns and manages worker process lifecycle
+
+**Responsibilities:**
+- Spawn worker processes with unique ports
+- Parse "READY:port" signal from worker stdout
+- Maintain registry of active workers (modelKey → WorkerProcess)
+- Monitor process exit and cleanup
+- Port allocation and collision avoidance
+- Worker health tracking
+
+**Configuration:**
+```json
+{
+  "WorkerOptions": {
+    "Enabled": true,
+    "ExecutablePath": "./FastTTSR.Worker",
+    "IdleTimeoutSeconds": 60,
+    "PortRangeStart": 50051,
+    "MaxPortAttempts": 100,
+    "StartupTimeoutSeconds": 30
+  }
+}
+```
+
+**Worker Spawn Command:**
+```bash
+./FastTTSR.Worker --port 50051 --model-key "kokoro:kokoro-q4" --idle-timeout 60
+```
+
+#### WorkerProxySynthesizer
+
+**Purpose:** gRPC client proxy that routes synthesis requests to workers
+
+**Responsibilities:**
+- Get or spawn worker for requested model (via WorkerProcessManager)
+- Create gRPC channel to worker (cached per model)
+- Marshal synthesis request to gRPC message
+- Unmarshal gRPC response to SynthesisResult
+- Handle gRPC errors and worker failures
+- Return fallback silence on errors
+
+**gRPC Contract (synthesis.proto):**
+```protobuf
+service WorkerSynthesis {
+  rpc Synthesize(SynthesizeRequest) returns (SynthesizeResponse);
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+```
+
+#### FastTTSR.Worker Process
+
+**Purpose:** Self-contained worker process that loads and runs one model
+
+**Lifecycle:**
+1. Parse command-line arguments (port, model-key, idle-timeout)
+2. Start Kestrel HTTP/2 server on specified port
+3. Register gRPC service (WorkerSynthesisService)
+4. Signal readiness: `Console.WriteLine("READY:{port}")`
+5. Handle synthesis requests via gRPC
+6. Track idle time with IdleMonitor
+7. Self-terminate after idle timeout: `Environment.Exit(0)`
+
+**Components:**
+- **Program.cs** - Worker entry point, Kestrel configuration
+- **WorkerSynthesisService** - gRPC service implementation, routes to KokoroTtsEngine or SupertonicTtsEngine
+- **IdleMonitor** - Background timer that calls shutdown callback after timeout
+
+### Worker Lifecycle
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                        Worker Lifecycle                          │
+└──────────────────────────────────────────────────────────────────┘
+
+1. Client Request
+   ↓
+2. API receives POST /v1/audio/speech
+   ↓
+3. WorkerProxySynthesizer.SynthesizeAsync()
+   ↓
+4. Check if worker exists for model
+   ↓ (no)
+5. WorkerProcessManager.SpawnWorkerAsync()
+   - Allocate port (e.g., 50051)
+   - Start: ./FastTTSR.Worker --port 50051 --model-key "kokoro:kokoro-q4"
+   - Wait for "READY:50051" on stdout (max 30s)
+   ↓
+6. Worker process starts
+   - Load ONNX model (~100-300MB)
+   - Start gRPC server
+   - Print "READY:50051"
+   ↓
+7. WorkerProxySynthesizer creates gRPC channel
+   ↓
+8. Send SynthesizeRequest via gRPC
+   ↓
+9. Worker processes request
+   - Text sanitization
+   - Phonemization (espeak-ng)
+   - ONNX inference
+   - WAV generation
+   - Record activity (reset idle timer)
+   ↓
+10. Return SynthesizeResponse (audio bytes)
+    ↓
+11. API streams audio to client
+    ↓
+    ... time passes (60+ seconds) ...
+    ↓
+12. Worker idle timeout reached
+    - IdleMonitor detects idle > 60s
+    - Execute shutdown callback: Environment.Exit(0)
+    ↓
+13. WorkerProcessManager detects process exit
+    - Remove worker from registry
+    - Release port
+    - Dispose gRPC channel
+    ↓
+14. Next request for same model → spawn new worker (back to step 5)
+```
+
+### Memory Management Comparison
+
+#### In-Process Mode (Old)
+```
+API Process Memory = Base (50MB) + All Loaded Models
+- kokoro-q4:  ~150MB
+- kokoro-f:   ~380MB
+- supertonic: ~250MB
+
+Total if all loaded: 50MB + 150MB + 380MB + 250MB = 830MB
+
+Issues:
+- Models stay loaded even when idle
+- Dispose() may not release native memory (ONNX, NumSharp)
+- Garbage collection delays
+- Memory fragmentation
+```
+
+#### Worker Mode (New)
+```
+API Process Memory = Base (50MB) - stays constant
+Worker Processes:
+- kokoro-q4 worker:  ~150MB (only when active)
+- kokoro-f worker:   ~380MB (only when active)
+- supertonic worker: ~250MB (only when active)
+
+Total when all active: 50MB + 150MB + 380MB + 250MB = 830MB
+Total when all idle:   50MB + 0MB + 0MB + 0MB = 50MB ✅
+
+Benefits:
+- OS guarantees memory reclamation on Process.Exit()
+- No memory leaks from native libraries
+- API stays lightweight
+- Scales down automatically
+```
+
+### Configuration
+
+#### Enable/Disable Worker Mode
+
+**appsettings.json:**
+```json
+{
+  "WorkerOptions": {
+    "Enabled": true  // false = use in-process synthesizers
+  }
+}
+```
+
+**Environment Variable (Docker):**
+```bash
+docker run -e WorkerOptions__Enabled=true fastttsr
+```
+
+#### Worker Idle Timeout
+
+Controls how long a worker stays alive after last request:
+```json
+{
+  "WorkerOptions": {
+    "IdleTimeoutSeconds": 60  // Recommended: 30-300
+  }
+}
+```
+
+**Trade-offs:**
+- **Lower (30s):** Faster memory reclamation, more frequent respawns
+- **Higher (300s):** Better performance for bursty traffic, higher memory usage
+
+#### Port Range
+
+Workers bind to sequential ports starting from `PortRangeStart`:
+```json
+{
+  "WorkerOptions": {
+    "PortRangeStart": 50051,
+    "MaxPortAttempts": 100
+  }
+}
+```
+
+**Firewall:** Ports are localhost-only, no external access needed
+
+### Error Handling
+
+#### Worker Spawn Failure
+- **Cause:** Executable not found, port collision, timeout
+- **Recovery:** Return error to client, log failure
+- **Next Request:** Retry spawn
+
+#### Worker Crash During Request
+- **Cause:** ONNX inference error, OOM, segfault
+- **Detection:** gRPC call fails with RpcException
+- **Recovery:** Return fallback silence, remove dead worker
+- **Next Request:** Spawn new worker
+
+#### Worker Exit Between Requests
+- **Detection:** Process.HasExited = true
+- **Recovery:** Transparent respawn on next request
+- **Impact:** First request after exit has +200-500ms latency (model load)
+
+### Performance Characteristics
+
+#### Latency
+- **First Request (Cold Start):** +200-500ms (spawn + model load)
+- **Subsequent Requests (Warm):** +1-3ms (gRPC overhead vs in-process)
+- **After Idle Timeout:** Cold start again
+
+#### Throughput
+- **Single Worker:** Same as in-process (~50-100 req/s for Kokoro)
+- **Multiple Models:** Better than in-process (no lock contention)
+
+#### Memory
+- **Baseline:** API process stays at ~50MB
+- **Peak:** Sum of active worker processes
+- **Idle:** Returns to baseline after timeout
+
+### Docker Deployment
+
+**Dockerfile:**
+```dockerfile
+# Build both API and Worker
+RUN dotnet publish src/FastTTSR.Api/FastTTSR.Api.csproj -o /out/api
+RUN dotnet publish src/FastTTSR.Worker/FastTTSR.Worker.csproj -o /out/worker
+
+# Copy to runtime image
+COPY --from=build /out/api/ ./
+COPY --from=build /out/worker/ ./worker/
+
+# Configure worker path
+ENV WorkerOptions__ExecutablePath=/app/worker/FastTTSR.Worker
+```
+
+**Important:** Both API and Worker share the same model cache directory (`/cache`), so models are only downloaded once.
+
+### Monitoring
+
+#### Worker Health Check
+```bash
+# gRPC health check (from within worker)
+grpc_cli call localhost:50051 synthesis.WorkerSynthesis.HealthCheck ""
+
+# Response:
+# is_ready: true
+# model_loaded: "kokoro:kokoro-q4"
+# idle_seconds: 23.4
+```
+
+#### Process Listing
+```bash
+# Check active workers
+ps aux | grep FastTTSR.Worker
+
+# Example output:
+# ./FastTTSR.Worker --port 50051 --model-key "kokoro:kokoro-q4"
+# ./FastTTSR.Worker --port 50052 --model-key "supertonic:supertonic-3"
+```
+
+#### Logs
+```
+[FastTTSR] Worker mode ENABLED - models will run in separate processes
+[Worker] Starting on port 50051 for model: kokoro:kokoro-q4
+[Worker] READY:50051
+[Worker] Synthesis request: engine=kokoro, model=kokoro-q4
+[Worker] Synthesis complete: 42 chars, 0.15s processing, 1.8s audio
+[Worker] Idle timeout reached (60s). Shutting down...
+```
+
+
+
 ## Core Components
 
 ### 1. API Layer (`Program.cs`)

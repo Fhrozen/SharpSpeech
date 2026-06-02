@@ -11,6 +11,7 @@
 
 - 🎯 **OpenAI-Compatible API** - Drop-in replacement for OpenAI's `/v1/audio/speech` endpoint
 - 🚀 **High Performance** - Custom ONNX inference engine with direct OnnxRuntime integration
+- 💾 **Worker Process Architecture** - OS-level memory isolation with automatic cleanup and guaranteed resource reclamation
 - 🌍 **Multilingual** - Support for 3+ languages including English, Japanese, Chinese, Spanish, French, and more
 - 🎨 **Multiple TTS Models** - Kokoro (quantized & full precision) and Supertonic-3 models
 - 🎭 **Rich Voice Library** - 5+ speaker voices with diverse characteristics

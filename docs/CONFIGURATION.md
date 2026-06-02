@@ -95,9 +95,74 @@ Located at `src/FastTTSR.Api/appsettings.json`
   "ModelIdleMonitor": {
     "IdleTimeoutSeconds": 60,
     "CheckIntervalSeconds": 10
+  },
+  "WorkerOptions": {
+    "Enabled": true,
+    "ExecutablePath": "./FastTTSR.Worker",
+    "IdleTimeoutSeconds": 60,
+    "PortRangeStart": 50051,
+    "MaxPortAttempts": 100,
+    "StartupTimeoutSeconds": 30
   }
 }
 ```
+
+#### Worker Process Configuration
+
+**WorkerOptions** controls the worker process mode for model isolation. When enabled, models run in separate processes instead of in the main API process.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `Enabled` | `true` | Enable worker process mode. Set to `false` for in-process mode |
+| `ExecutablePath` | `./FastTTSR.Worker` | Path to worker executable |
+| `IdleTimeoutSeconds` | `60` | Seconds before worker self-terminates (0 = never) |
+| `PortRangeStart` | `50051` | Starting port for worker gRPC servers |
+| `MaxPortAttempts` | `100` | Maximum ports to try before failing |
+| `StartupTimeoutSeconds` | `30` | Max time to wait for worker startup |
+
+**Worker Mode Benefits:**
+- ✅ True OS-level memory isolation per model
+- ✅ Guaranteed memory reclamation when worker exits
+- ✅ Fault isolation - worker crashes don't affect API
+- ✅ Automatic respawn on failure
+- ✅ Reduced baseline memory (~50MB vs ~300MB+)
+
+**Environment Variable Overrides:**
+```bash
+# Disable worker mode
+WorkerOptions__Enabled=false
+
+# Change idle timeout
+WorkerOptions__IdleTimeoutSeconds=120
+
+# Docker deployment path
+WorkerOptions__ExecutablePath=/app/worker/FastTTSR.Worker
+```
+
+**Mode Comparison:**
+
+| Aspect | Worker Mode (Enabled=true) | In-Process Mode (Enabled=false) |
+|--------|----------------------------|----------------------------------|
+| Memory Isolation | OS-level (separate process) | Managed (.NET GC) |
+| Memory Cleanup | Guaranteed on exit | Best-effort via Dispose() |
+| Baseline Memory | ~50MB (API only) | ~50MB + all models |
+| Idle Memory | ~50MB (workers terminated) | ~50-800MB (models loaded) |
+| First Request | +200-500ms (spawn + load) | +50-200ms (load only) |
+| Subsequent | +1-3ms (gRPC overhead) | 0ms (direct call) |
+| Fault Isolation | High (process boundary) | Low (shared memory) |
+| Complexity | Higher (IPC, process mgmt) | Lower (direct calls) |
+
+**When to Use Worker Mode:**
+- ✅ Production deployments with multiple models
+- ✅ Memory-constrained environments
+- ✅ Long-running services with bursty traffic
+- ✅ When model unloading is critical
+
+**When to Use In-Process Mode:**
+- ✅ Development and testing
+- ✅ Single-model deployments
+- ✅ High-throughput, low-latency requirements
+- ✅ Simplified debugging
 
 #### ModelIdleMonitor Section
 

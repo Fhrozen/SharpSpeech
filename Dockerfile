@@ -16,7 +16,7 @@ COPY src/FastTTSR.Api/ src/FastTTSR.Api/
 COPY src/FastTTSR.Worker/ src/FastTTSR.Worker/
 COPY --from=frontend-build /app/frontend/dist/ src/FastTTSR.Api/wwwroot/
 RUN dotnet publish src/FastTTSR.Api/FastTTSR.Api.csproj -c Release -o /out/api /p:UseAppHost=false
-RUN dotnet publish src/FastTTSR.Worker/FastTTSR.Worker.csproj -c Release -o /out/worker /p:UseAppHost=false
+RUN dotnet publish src/FastTTSR.Worker/FastTTSR.Worker.csproj -c Release -o /out/worker /p:UseAppHost=true
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-preview
 WORKDIR /app

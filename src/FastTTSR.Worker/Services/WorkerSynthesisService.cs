@@ -37,7 +37,8 @@ public sealed class WorkerSynthesisService : WorkerSynthesis.WorkerSynthesisBase
             {
                 audioBytes = await SynthesizeWithKokoroAsync(request, context.CancellationToken);
             }
-            else if (string.Equals(request.Engine, "supertonic", StringComparison.OrdinalIgnoreCase))
+            else if (string.Equals(request.Engine, "supertonic", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(request.Engine, "supertonic-3", StringComparison.OrdinalIgnoreCase))
             {
                 audioBytes = await SynthesizeWithSupertonicAsync(request, context.CancellationToken);
             }
@@ -73,7 +74,8 @@ public sealed class WorkerSynthesisService : WorkerSynthesis.WorkerSynthesisBase
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[Worker] Synthesis failed: {ex.Message}");
+            Console.Error.WriteLine($"[Worker] Synthesis failed: {ex.GetType().Name}: {ex.Message}");
+            Console.Error.WriteLine($"[Worker] Stack trace: {ex.StackTrace}");
             
             // Return fallback silence
             var fallbackBytes = GenerateFallbackSilence(request);
@@ -114,6 +116,8 @@ public sealed class WorkerSynthesisService : WorkerSynthesis.WorkerSynthesisBase
         var speed = Math.Clamp(request.Speed, 0.5f, 2.0f);
         var language = string.IsNullOrWhiteSpace(request.Language) ? "en" : request.Language;
         var style = LoadSupertonicStyle(request);
+
+        Console.WriteLine($"[Worker] Supertonic synthesis: speed={speed}, language={language}");
 
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -162,11 +166,12 @@ public sealed class WorkerSynthesisService : WorkerSynthesis.WorkerSynthesisBase
                 _kokoroEngine = null;
                 _supertonicEngine?.Dispose();
 
-                Console.WriteLine($"[Worker] Loading Supertonic model: {request.ModelPath}");
+                Console.WriteLine($"[Worker] Loading Supertonic model from directory: {request.ModelPath}");
                 
-                if (!File.Exists(request.ModelPath))
+                // Supertonic takes a directory path, not a file path
+                if (!Directory.Exists(request.ModelPath))
                 {
-                    throw new FileNotFoundException($"Model file not found: {request.ModelPath}");
+                    throw new DirectoryNotFoundException($"Model directory not found: {request.ModelPath}");
                 }
 
                 _supertonicEngine = new SupertonicTtsEngine(request.ModelPath);

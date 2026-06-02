@@ -64,13 +64,24 @@ public sealed class WorkerProxySynthesizer : ITtsSynthesizer, IDisposable
                 Language = request.Language ?? "en-us"
             };
 
+            _logger.LogInformation("Sending synthesis request to worker {ModelKey}: speed={Speed}, voice={Voice}", 
+                modelKey, request.Speed, request.Voice);
+
             grpcRequest.SupportedLanguages.AddRange(model.SupportedLanguages);
             grpcRequest.Speakers.AddRange(model.Speakers);
 
-            _logger.LogDebug("Sending synthesis request to worker {ModelKey} on port {Port}", modelKey, worker.Port);
-
-            // Call worker via gRPC
-            var response = await client.SynthesizeAsync(grpcRequest, cancellationToken: cancellationToken);
+            // Call worker via gRPC with retry logic
+            SynthesizeResponse response;
+            try
+            {
+                response = await client.SynthesizeAsync(grpcRequest, cancellationToken: cancellationToken);
+            }
+            catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.Unavailable)
+            {
+                _logger.LogWarning("First connection attempt failed, retrying in 1 second...");
+                await Task.Delay(1000, cancellationToken);
+                response = await client.SynthesizeAsync(grpcRequest, cancellationToken: cancellationToken);
+            }
 
             // Convert gRPC response to SynthesisResult
             return new SynthesisResult(

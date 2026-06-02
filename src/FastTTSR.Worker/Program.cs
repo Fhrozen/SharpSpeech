@@ -57,7 +57,13 @@ var app = builder.Build();
 // Map gRPC service
 app.MapGrpcService<WorkerSynthesisService>();
 
-// Signal readiness
+// Start the server in background
+var runTask = app.RunAsync();
+
+// Wait a moment for Kestrel to start listening
+await Task.Delay(500);
+
+// Signal readiness after server is listening
 Console.WriteLine($"[Worker] READY:{port}");
 
-app.Run();
+await runTask;

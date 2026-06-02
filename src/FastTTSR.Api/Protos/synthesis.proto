@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+option csharp_namespace = "FastTTSR.Worker.Grpc";
+
+package synthesis;
+
+// Service for TTS synthesis operations running in worker process
+service WorkerSynthesis {
+  // Synthesize text to speech audio
+  rpc Synthesize(SynthesizeRequest) returns (SynthesizeResponse);
+  
+  // Health check for worker readiness
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// Request message for synthesis
+message SynthesizeRequest {
+  // Model configuration
+  string model_name = 1;
+  string engine = 2;
+  string model_path = 3;
+  string voices_path = 4;
+  string tokens_path = 5;
+  string voice_file_extension = 6;
+  repeated string supported_languages = 7;
+  repeated string speakers = 8;
+  
+  // Synthesis parameters
+  string input = 10;
+  string voice = 11;
+  string response_format = 12;
+  float speed = 13;
+  string language = 14;
+}
+
+// Response message for synthesis
+message SynthesizeResponse {
+  bytes audio_bytes = 1;
+  string content_type = 2;
+  string file_name = 3;
+  double processing_time_seconds = 4;
+  double audio_duration_seconds = 5;
+  int32 character_count = 6;
+}
+
+// Health check request
+message HealthCheckRequest {
+}
+
+// Health check response
+message HealthCheckResponse {
+  bool is_ready = 1;
+  string model_loaded = 2;
+  double idle_seconds = 3;
+}

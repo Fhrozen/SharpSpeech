@@ -18,14 +18,33 @@ builder.WebHost.UseUrls(urls.ToArray());
 
 builder.Services.Configure<ModelCacheOptions>(builder.Configuration.GetSection(ModelCacheOptions.SectionName));
 builder.Services.Configure<ModelIdleMonitorOptions>(builder.Configuration.GetSection(ModelIdleMonitorOptions.SectionName));
+builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection(WorkerOptions.SectionName));
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IModelCatalog, ModelCatalog>();
 builder.Services.AddSingleton<IModelCache, ModelCache>();
-builder.Services.AddSingleton<KokoroTtsSynthesizer>();
-builder.Services.AddSingleton<SupertonicTtsSynthesizer>();
-builder.Services.AddSingleton<ITtsSynthesizer, TtsSynthesizerRouter>();
+
+// Configure synthesizer based on worker mode
+var workerOptions = builder.Configuration.GetSection(WorkerOptions.SectionName).Get<WorkerOptions>() ?? new WorkerOptions();
+
+if (workerOptions.Enabled)
+{
+    // Worker process mode - use proxy synthesizer
+    Console.WriteLine("[FastTTSR] Worker mode ENABLED - models will run in separate processes");
+    builder.Services.AddSingleton<WorkerProcessManager>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<WorkerProcessManager>());
+    builder.Services.AddSingleton<ITtsSynthesizer, WorkerProxySynthesizer>();
+}
+else
+{
+    // In-process mode - use direct synthesizers
+    Console.WriteLine("[FastTTSR] Worker mode DISABLED - models will run in-process");
+    builder.Services.AddSingleton<KokoroTtsSynthesizer>();
+    builder.Services.AddSingleton<SupertonicTtsSynthesizer>();
+    builder.Services.AddSingleton<ITtsSynthesizer, TtsSynthesizerRouter>();
+    builder.Services.AddHostedService<ModelIdleMonitorService>();
+}
+
 builder.Services.AddHostedService<ModelWarmupService>();
-builder.Services.AddHostedService<ModelIdleMonitorService>();
 
 // Add Swagger/OpenAPI support
 builder.Services.AddEndpointsApiExplorer();

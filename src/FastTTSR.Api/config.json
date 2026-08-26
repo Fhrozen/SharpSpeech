@@ -76,5 +76,48 @@
       "supportedLanguages": [],
       "speakers": ["F1", "F2", "F3", "F4", "F5", "M1", "M2", "M3", "M4", "M5"]
     }
+  ],
+  "asrModels": [
+    {
+      "name": "whisper-base",
+      "displayName": "Whisper Base",
+      "description": "OpenAI Whisper base multilingual model (GGML), run via whisper.cpp.",
+      "engine": "whisper",
+      "modelPath": "ggml-base.bin",
+      "assets": [
+        {
+          "relativePath": "ggml-base.bin",
+          "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
+        }
+      ],
+      "supportedLanguages": [],
+      "supportsLanguageAutoDetect": true
+    },
+    {
+      "name": "nemotron-3.5",
+      "displayName": "Nemotron 3.5 ASR",
+      "description": "NVIDIA Nemotron 3.5 streaming ASR (cache-aware FastConformer-RNNT, INT4 ONNX).",
+      "engine": "nemotron-3.5",
+      "modelPath": "",
+      "assets": [
+        { "relativePath": "encoder.onnx", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/encoder.onnx" },
+        { "relativePath": "encoder.onnx.data", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/encoder.onnx.data" },
+        { "relativePath": "decoder.onnx", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/decoder.onnx" },
+        { "relativePath": "decoder.onnx.data", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/decoder.onnx.data" },
+        { "relativePath": "joint.onnx", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/joint.onnx" },
+        { "relativePath": "joint.onnx.data", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/joint.onnx.data" },
+        { "relativePath": "audio_processor_config.json", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/audio_processor_config.json" },
+        { "relativePath": "model_config.json", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/model_config.json" },
+        { "relativePath": "tokenizer.json", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/tokenizer.json" },
+        { "relativePath": "vocab.txt", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/vocab.txt" },
+        { "relativePath": "silero_vad.onnx", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/silero_vad.onnx" }
+      ],
+      "supportedLanguages": [
+        "en", "es", "fr", "it", "pt", "nl", "de", "tr", "ru", "ar", "hi", "ja", "ko", "vi", "uk",
+        "pl", "sv", "cs", "nb", "da", "bg", "fi", "hr", "sk", "zh", "hu", "ro", "et",
+        "el", "lt", "lv", "mt", "sl", "he", "th", "nn"
+      ],
+      "supportsLanguageAutoDetect": true
+    }
   ]
 }

@@ -1,7 +1,8 @@
-namespace FastTTSR.Worker.Services;
+namespace FastTTSR.Api.Services;
 
 /// <summary>
-/// Monitors worker idle time and triggers shutdown callback after timeout
+/// Monitors worker idle time and triggers shutdown callback after timeout. Shared by all
+/// worker projects (TTS, ASR) via their ProjectReference to FastTTSR.Api.
 /// </summary>
 public sealed class IdleMonitor : IDisposable
 {

@@ -30,7 +30,7 @@ if (workerOptions.Enabled)
 {
     // Worker process mode - use proxy synthesizer
     Console.WriteLine("[FastTTSR] Worker mode ENABLED - models will run in separate processes");
-    builder.Services.AddSingleton<WorkerProcessManager>();
+    builder.Services.AddSingleton(sp => new WorkerProcessManager(workerOptions, sp.GetRequiredService<ILogger<WorkerProcessManager>>()));
     builder.Services.AddHostedService(sp => sp.GetRequiredService<WorkerProcessManager>());
     builder.Services.AddSingleton<ITtsSynthesizer, WorkerProxySynthesizer>();
 }

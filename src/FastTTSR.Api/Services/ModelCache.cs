@@ -25,8 +25,41 @@ public sealed class ModelCache : IModelCache
         Directory.CreateDirectory(targetDirectory);
 
         var client = _httpClientFactory.CreateClient();
+        await DownloadAssetsAsync(client, targetDirectory, model.Name, model.Assets, cancellationToken);
 
-        foreach (var asset in model.Assets)
+        if (string.Equals(model.Engine, KokoroEngine, StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(model.VoicesPath) &&
+            !string.IsNullOrWhiteSpace(model.VoicesBaseUrl))
+        {
+            await DownloadVoiceFiles(client, model, targetDirectory, cancellationToken);
+        }
+
+        if (SupertonicMetadata.IsSupertonic3Engine(model.Engine) &&
+            !string.IsNullOrWhiteSpace(model.VoicesPath) &&
+            !string.IsNullOrWhiteSpace(model.VoicesBaseUrl))
+        {
+            await DownloadVoiceFiles(client, model, targetDirectory, cancellationToken);
+        }
+
+        return targetDirectory;
+    }
+
+    public async Task<string> EnsureModelAsync(AsrModelDefinition model, CancellationToken cancellationToken)
+    {
+        var targetDirectory = Path.Combine(_cacheDirectory, model.Name);
+        Directory.CreateDirectory(targetDirectory);
+
+        var client = _httpClientFactory.CreateClient();
+        await DownloadAssetsAsync(client, targetDirectory, model.Name, model.Assets, cancellationToken);
+
+        return targetDirectory;
+    }
+
+    private async Task DownloadAssetsAsync(
+        HttpClient client, string targetDirectory, string modelName,
+        IReadOnlyList<ModelAsset> assets, CancellationToken cancellationToken)
+    {
+        foreach (var asset in assets)
         {
             var outputPath = Path.Combine(targetDirectory, asset.RelativePath);
             Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
@@ -55,25 +88,9 @@ public sealed class ModelCache : IModelCache
                     File.Delete(tempPath);
                 }
 
-                _logger.LogWarning(ex, "Failed to download model file {File} for {Model}", asset.RelativePath, model.Name);
+                _logger.LogWarning(ex, "Failed to download model file {File} for {Model}", asset.RelativePath, modelName);
             }
         }
-
-        if (string.Equals(model.Engine, KokoroEngine, StringComparison.OrdinalIgnoreCase) &&
-            !string.IsNullOrWhiteSpace(model.VoicesPath) &&
-            !string.IsNullOrWhiteSpace(model.VoicesBaseUrl))
-        {
-            await DownloadVoiceFiles(client, model, targetDirectory, cancellationToken);
-        }
-
-        if (SupertonicMetadata.IsSupertonic3Engine(model.Engine) &&
-            !string.IsNullOrWhiteSpace(model.VoicesPath) &&
-            !string.IsNullOrWhiteSpace(model.VoicesBaseUrl))
-        {
-            await DownloadVoiceFiles(client, model, targetDirectory, cancellationToken);
-        }
-
-        return targetDirectory;
     }
 
     private async Task DownloadVoiceFiles(HttpClient client, TtsModelDefinition model,

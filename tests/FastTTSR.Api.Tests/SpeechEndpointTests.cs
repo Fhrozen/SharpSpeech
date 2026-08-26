@@ -136,6 +136,7 @@ public sealed class SpeechEndpointTests
     private sealed class StubModelCache : IModelCache
     {
         public Task<string> EnsureModelAsync(TtsModelDefinition model, CancellationToken cancellationToken) => Task.FromResult("/tmp/models");
+        public Task<string> EnsureModelAsync(AsrModelDefinition model, CancellationToken cancellationToken) => Task.FromResult("/tmp/models");
     }
 
     private sealed class StubTtsSynthesizer : ITtsSynthesizer

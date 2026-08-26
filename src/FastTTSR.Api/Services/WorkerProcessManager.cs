@@ -2,12 +2,12 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using FastTTSR.Api.Options;
-using Microsoft.Extensions.Options;
 
 namespace FastTTSR.Api.Services;
 
 /// <summary>
-/// Manages worker process lifecycle - spawning, tracking, and cleanup
+/// Manages worker process lifecycle - spawning, tracking, and cleanup. One instance is created
+/// per task type (TTS, ASR) so each can be configured/pooled independently.
 /// </summary>
 public sealed class WorkerProcessManager : IHostedService, IDisposable
 {
@@ -19,10 +19,10 @@ public sealed class WorkerProcessManager : IHostedService, IDisposable
     private bool _disposed;
 
     public WorkerProcessManager(
-        IOptions<WorkerOptions> options,
+        WorkerOptions options,
         ILogger<WorkerProcessManager> logger)
     {
-        _options = options.Value;
+        _options = options;
         _logger = logger;
     }
 

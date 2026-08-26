@@ -1,3 +1,4 @@
+using FastTTSR.Api.Services;
 using FastTTSR.Worker.Services;
 
 var builder = WebApplication.CreateBuilder(args);

@@ -63,12 +63,12 @@ public sealed class ModelCatalog : IModelCatalog
             VoiceFileExtension = ".json",
             Assets =
             [
-                new TtsModelAsset { RelativePath = "onnx/text_encoder.onnx",       Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/text_encoder.onnx" },
-                new TtsModelAsset { RelativePath = "onnx/duration_predictor.onnx", Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/duration_predictor.onnx" },
-                new TtsModelAsset { RelativePath = "onnx/vector_estimator.onnx",   Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/vector_estimator.onnx" },
-                new TtsModelAsset { RelativePath = "onnx/vocoder.onnx",            Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/vocoder.onnx" },
-                new TtsModelAsset { RelativePath = "onnx/tts.json",                Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/tts.json" },
-                new TtsModelAsset { RelativePath = "onnx/unicode_indexer.json",    Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/unicode_indexer.json" }
+                new ModelAsset { RelativePath = "onnx/text_encoder.onnx",       Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/text_encoder.onnx" },
+                new ModelAsset { RelativePath = "onnx/duration_predictor.onnx", Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/duration_predictor.onnx" },
+                new ModelAsset { RelativePath = "onnx/vector_estimator.onnx",   Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/vector_estimator.onnx" },
+                new ModelAsset { RelativePath = "onnx/vocoder.onnx",            Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/vocoder.onnx" },
+                new ModelAsset { RelativePath = "onnx/tts.json",                Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/tts.json" },
+                new ModelAsset { RelativePath = "onnx/unicode_indexer.json",    Url = "https://huggingface.co/Supertone/supertonic-3/resolve/main/onnx/unicode_indexer.json" }
             ]
         }),
         ApplyCanonicalMetadata(new()
@@ -84,7 +84,7 @@ public sealed class ModelCatalog : IModelCatalog
             VoiceFileExtension = ".bin",
             Assets =
             [
-                new TtsModelAsset
+                new ModelAsset
                 {
                     RelativePath = "onnx/model_q4.onnx",
                     Url = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q4.onnx"
@@ -104,7 +104,7 @@ public sealed class ModelCatalog : IModelCatalog
             VoiceFileExtension = ".bin",
             Assets =
             [
-                new TtsModelAsset
+                new ModelAsset
                 {
                     RelativePath = "onnx/model.onnx",
                     Url = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model.onnx"

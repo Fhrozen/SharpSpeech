@@ -210,9 +210,28 @@ Parallel abstraction to the TTS one, added alongside it (not replacing it):
   `"nemotron-3.5"`, encoder/decoder/joint ONNX + audio processor config + tokenizer + silero VAD,
   from `onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4`).
 
-**Still to be added** (worker process, engines, endpoints, SERVER_MODE, frontend) — this section
-will be filled in incrementally as those phases land; see the implementation log below for what
-exists so far.
+**Still to be added** (worker process, endpoints, SERVER_MODE, frontend) — this section will be
+filled in incrementally as those phases land; see the implementation log below for what exists so
+far.
+
+#### Whisper engine (Phase 2 — done)
+- NuGet: `Whisper.net` + `Whisper.net.Runtime` (added to `FastTTSR.Api.csproj`; native whisper.cpp
+  binaries ship inside `Whisper.net.Runtime`, no external dependency needed).
+- `Services/WhisperAsrEngine.cs`: wraps one GGML model file via `WhisperFactory.FromPath(...)`;
+  `TranscribeAsync(byte[] wavBytes, string? language, ct)` builds a processor
+  (`.CreateBuilder().WithLanguage(language ?? "auto").Build()`), feeds the WAV bytes as a
+  `MemoryStream` to `processor.ProcessAsync(...)` (an `IAsyncEnumerable<SegmentData>`), concatenates
+  `segment.Text` across all segments, and picks up `segment.Language` as the detected language when
+  auto-detecting.
+- `Services/WhisperAsrTranscriber.cs`: implements `IAsrTranscriber` + `IIdleTrackingTranscriber`,
+  pools one `WhisperAsrEngine` per `"{model.Name}:{modelDirectory}"` key in a
+  `ConcurrentDictionary` (mirrors `KokoroTtsSynthesizer`'s `GetOrCreateEngine` pattern exactly).
+  Rejects any model whose `Engine` isn't `"whisper"`.
+- `Services/WavAudioUtils.cs`: new small shared helper — reads a RIFF/WAV header (no external audio
+  library) to compute `AudioDurationSeconds` for the *input* recording (needed for ASR metrics,
+  unlike TTS where duration is computed from generated PCM at a known fixed sample rate).
+- Not yet wired into DI/endpoints/worker — that lands in Phase 4/5. Native runtime packaging for
+  the container (linux-x64) is still an open verification item for Phase 6.
 
 ## Build tooling note
 No local `dotnet` CLI in the dev container — use `./dotnet.sh <args>` (Docker-based wrapper) for

@@ -165,10 +165,18 @@ TTS-only/ASR-only deployments using `target: runtime-tts`/`runtime-asr`.
 ## Frontend (`frontend/`)
 Vue 3 + TypeScript, Composition API, no UI framework/router/state library (deliberately minimal).
 - `App.vue`: on mount, fetches `GET /api/server-info` first (`{ ttsEnabled, asrEnabled }`); sets
-  `activeTab` to whichever is enabled (defaults to `'tts'` if both, `'asr'` if only ASR). Then
-  conditionally fetches `GET /api/models` (if `ttsEnabled`) and/or `GET /api/asr-models` (if
-  `asrEnabled`). A `.tab-switcher` (two buttons, gold-accent active underline) is rendered only
-  when both flags are true; otherwise the single enabled panel shows directly with no tabs.
+  `activeTab` to whichever is enabled (defaults to `'tts'` if both, `'asr'` if only ASR). Default
+  local state before that fetch resolves is `{ ttsEnabled: false, asrEnabled: false }` plus a
+  `serverInfoLoaded` flag, so neither panel flashes before the real capabilities are known — a
+  loading placeholder is shown instead; if the fetch fails, it falls back to TTS-only (the pre-ASR
+  default). If a server reports neither flag (misconfiguration), an error message is shown instead
+  of a blank page. The TTS panel is wrapped in `v-if="serverInfo.ttsEnabled"` and the ASR panel in
+  `v-if="serverInfo.asrEnabled"` — only the panel(s) the running server actually serves are ever
+  mounted, matching `SERVER_MODE`. Then conditionally fetches `GET /api/models` (if `ttsEnabled`)
+  and/or `GET /api/asr-models` (if `asrEnabled`). A `.tab-switcher` (two buttons, gold-accent
+  active underline) is rendered only when both flags are true; otherwise the single enabled panel
+  shows directly with no tabs. The header subtitle is computed from `serverInfo` (TTS-only/
+  ASR-only/both wording).
   - TTS panel (unchanged): form state (`model`, `speaker`, `language`, `speed`, `input`,
     `quality`) in a `reactive()`, calls `POST /v1/audio/speech` via plain `fetch()`, reads metrics
     from response headers.

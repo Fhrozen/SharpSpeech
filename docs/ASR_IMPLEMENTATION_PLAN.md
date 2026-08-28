@@ -572,11 +572,17 @@ runtime-all`, both in-process AND full worker mode):
 - `frontend/src/components/TranscriptionResult.vue` (new: metrics row + copyable text block,
   reuses `AudioPlayer`'s metric CSS class names for visual consistency)
 - `frontend/src/App.vue` (modified: fetches `/api/server-info` on mount and sets `activeTab`
-  accordingly; tab switcher rendered only when both `ttsEnabled`/`asrEnabled`; new ASR panel wired
-  to `asrForm` state, `loadAsrModels()`, and `transcribe()` which POSTs `FormData` to
-  `/v1/audio/transcriptions` and reads `X-Processing-Time`/`X-RTF`/`X-Audio-Duration`/
-  `X-Character-Count` response headers into `transcriptionMetrics`; added `.tab-switcher`/
-  `.tab-btn`/`.tab-panel`/`.demo-generate-btn` global styles matching the existing dark theme)
+  accordingly; renders nothing but a loading placeholder until `server-info` resolves (default
+  `serverInfo` is `{ ttsEnabled: false, asrEnabled: false }`, so no panel flashes before load);
+  shows an error message if a misconfigured server reports neither `ttsEnabled` nor `asrEnabled`;
+  tab switcher rendered only when both `ttsEnabled`/`asrEnabled`; TTS/ASR panels are each wrapped
+  in `v-if="serverInfo.ttsEnabled"`/`v-if="serverInfo.asrEnabled"` so only the panel(s) the running
+  server actually serves are ever mounted; header subtitle is computed from `serverInfo` (TTS-only/
+  ASR-only/both wording); new ASR panel wired to `asrForm` state, `loadAsrModels()`, and
+  `transcribe()` which POSTs `FormData` to `/v1/audio/transcriptions` and reads
+  `X-Processing-Time`/`X-RTF`/`X-Audio-Duration`/`X-Character-Count` response headers into
+  `transcriptionMetrics`; added `.tab-switcher`/`.tab-btn`/`.tab-panel`/`.demo-generate-btn`/
+  `.demo-placeholder` global styles matching the existing dark theme)
 - `frontend/pnpm-lock.yaml` (regenerated: pre-existing drift where `package.json` already listed
   `typescript`/`vue-tsc` devDependencies not reflected in the lockfile; refreshed while installing
   to run the build/type-check below, unrelated to the ASR feature itself)

@@ -14,8 +14,19 @@ import AudioFileInput from './components/AudioFileInput.vue'
 import TranscriptionResult from './components/TranscriptionResult.vue'
 import StatusMessage from './components/StatusMessage.vue'
 
-const serverInfo = ref<ServerInfo>({ ttsEnabled: true, asrEnabled: false })
+const serverInfo = ref<ServerInfo>({ ttsEnabled: false, asrEnabled: false })
+const serverInfoLoaded = ref(false)
 const activeTab = ref<'tts' | 'asr'>('tts')
+
+const headerSubtitle = computed(() => {
+  if (serverInfo.value.ttsEnabled && serverInfo.value.asrEnabled) {
+    return 'Multi-Model Text-to-Speech & Speech-to-Text System'
+  }
+  if (serverInfo.value.asrEnabled) {
+    return 'Multi-Model Speech-to-Text System'
+  }
+  return 'Multi-Model Text-to-Speech System'
+})
 
 const models = ref<TtsModel[]>([])
 const audioUrl = ref<string | null>(null)
@@ -242,12 +253,16 @@ async function loadServerInfo() {
     const response = await fetch('/api/server-info')
     if (response.ok) {
       serverInfo.value = await response.json()
+    } else {
+      // Endpoint unreachable/unrecognized: fall back to TTS-only (the pre-ASR default).
+      serverInfo.value = { ttsEnabled: true, asrEnabled: false }
     }
   } catch (err) {
-    // Assume TTS-only (the pre-ASR default) if the endpoint can't be reached.
+    serverInfo.value = { ttsEnabled: true, asrEnabled: false }
   }
 
   activeTab.value = serverInfo.value.ttsEnabled ? 'tts' : 'asr'
+  serverInfoLoaded.value = true
 }
 
 async function loadAsrModels() {
@@ -336,9 +351,19 @@ onMounted(async () => {
   <main class="app">
     <div class="demo-container">
       <div class="demo-content">
-        <AppHeader title="FastTTSR" subtitle="Multi-Model Text-to-Speech System" />
+        <AppHeader title="FastTTSR" :subtitle="headerSubtitle" />
 
-        <div v-if="serverInfo.ttsEnabled && serverInfo.asrEnabled" class="tab-switcher">
+        <div v-if="!serverInfoLoaded" class="demo-placeholder">
+          <div class="demo-placeholder-icon">⚡</div>
+          <p>Loading server capabilities...</p>
+        </div>
+
+        <div v-else-if="!serverInfo.ttsEnabled && !serverInfo.asrEnabled" class="demo-error">
+          The server is not configured to serve TTS or ASR. Check the <code>SERVER_MODE</code>
+          environment variable.
+        </div>
+
+        <div v-if="serverInfoLoaded && serverInfo.ttsEnabled && serverInfo.asrEnabled" class="tab-switcher">
           <button
             class="tab-btn"
             :class="{ active: activeTab === 'tts' }"
@@ -591,6 +616,23 @@ body {
   border: 1px solid rgba(239, 68, 68, 0.2);
   border-radius: 0.25rem;
   font-family: monospace;
+}
+
+.demo-placeholder {
+  text-align: center;
+  color: #555555;
+  padding: 3rem;
+}
+
+.demo-placeholder-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.demo-placeholder p {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 300;
 }
 
 @media (max-width: 768px) {

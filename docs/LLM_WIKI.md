@@ -304,6 +304,41 @@ recovered via a throwaway C# spike (`InferenceSession.InputMetadata`/`OutputMeta
 - Not yet exposed via HTTP — no `/v1/audio/transcriptions` endpoint exists yet, so
   `IAsrTranscriber`/`IAsrModelCatalog` are wired into DI but unreachable until Phase 5.
 
+#### REST endpoints (Phase 5 — done)
+- `GET /api/server-info` (always mapped) → `{ ttsEnabled, asrEnabled }`, reflects `SERVER_MODE`.
+- `GET /api/asr-models` (mapped only if `asrEnabled`) → list of `AsrModelDefinitionResponse`.
+- `POST /v1/audio/transcriptions` (mapped only if `asrEnabled`, OpenAI-compatible name/shape):
+  multipart/form-data (`file`, `model`, `language?`, `response_format?`), validates the model via
+  `IAsrModelCatalog`, resolves the model directory via `IModelCache.EnsureModelAsync`, calls
+  `IAsrTranscriber.TranscribeAsync`, returns `{ text }` JSON with metrics in response headers
+  (`X-Processing-Time`, `X-Audio-Duration`, `X-RTF`, `X-Character-Count`) mirroring the
+  `/v1/audio/speech` pattern.
+- `GET /v1/models` was changed to merge `IModelCatalog` and `IAsrModelCatalog` results via
+  `httpContext.RequestServices.GetService<T>()` (gracefully returns null instead of throwing if a
+  catalog isn't registered for the current `SERVER_MODE`) rather than requiring both as direct DI
+  parameters.
+- `/api/models` and `/v1/audio/speech` are now wrapped in `if (ttsEnabled)` with **zero internal
+  changes** - verified byte-identical via the full existing test suite.
+- **Verified live** (in-process mode smoke test, `SERVER_MODE=both`): `/api/server-info`,
+  `/api/asr-models`, and `/v1/models` all return correct results. `/v1/audio/transcriptions`
+  routing/validation/model-resolution all execute correctly, but the actual Whisper transcription
+  call currently fails - see the open native-library issue below (this is an environment/packaging
+  issue, not an endpoint bug).
+
+### Open issue: Whisper.net native library fails to load (carried to Phase 6)
+Confirmed via a live test on `mcr.microsoft.com/dotnet/sdk:10.0-preview`: `WhisperFactory.FromPath`
+throws `"Failed to load native whisper library... PInvokeError: Success"` even though
+`runtimes/linux-x64/libwhisper.so` (and siblings) are present in both `dotnet build` and
+`dotnet publish -r linux-x64` output. One confirmed contributing cause: `libggml-cpu-whisper.so`
+depends on `libgomp.so.1` (GNU OpenMP), which is not installed in the base image (same category of
+issue as Kokoro needing `apt-get install libespeak-ng1`) - but installing `libgomp1` alone did
+**not** fully resolve the failure; a live re-test after installing it still failed identically.
+**Phase 6 must**: add `libgomp1`/`libstdc++6` to the Dockerfile, and further investigate the
+remaining native-load failure (candidates: explicit `LD_LIBRARY_PATH` pointing at the app's
+`runtimes/linux-x64` folder, a self-contained `-r linux-x64` publish, or checking whether a newer/
+split Whisper.net.Runtime package is needed for desktop Linux) before considering Whisper ASR
+production-ready.
+
 ### Updated env var table (as of Phase 4)
 | Env var | Purpose | Default |
 |---|---|---|

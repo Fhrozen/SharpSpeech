@@ -141,6 +141,15 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
     .WithDescription("Returns the service health status")
     .Produces<object>(200);
 
+app.MapGet("/api/server-info", () => Results.Ok(new ServerInfoResponse(ttsEnabled, asrEnabled)))
+    .WithName("GetServerInfo")
+    .WithTags("Health")
+    .WithSummary("Get server capability info")
+    .WithDescription("Returns which task types (TTS speech synthesis, ASR transcription) this server instance was started with, controlled by the SERVER_MODE environment variable")
+    .Produces<ServerInfoResponse>(200);
+
+if (ttsEnabled)
+{
 app.MapGet("/api/models", (IModelCatalog modelCatalog) =>
 {
     var models = modelCatalog.GetSupportedModels().Select(m =>
@@ -173,25 +182,46 @@ app.MapGet("/api/models", (IModelCatalog modelCatalog) =>
     .WithSummary("List available TTS models")
     .WithDescription("Returns detailed information about all available text-to-speech models, including supported languages and speakers")
     .Produces<IEnumerable<ModelDefinitionResponse>>(200);
+}
 
-app.MapGet("/v1/models", (IModelCatalog modelCatalog) =>
+app.MapGet("/v1/models", (HttpContext httpContext) =>
 {
-    var models = modelCatalog.GetSupportedModels().Select(m => new
+    var models = new List<object>();
+
+    var ttsCatalog = httpContext.RequestServices.GetService<IModelCatalog>();
+    if (ttsCatalog is not null)
     {
-        id = m.Name,
-        @object = "model",
-        created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-        owned_by = "fastttsr"
-    });
+        models.AddRange(ttsCatalog.GetSupportedModels().Select(m => (object)new
+        {
+            id = m.Name,
+            @object = "model",
+            created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            owned_by = "fastttsr"
+        }));
+    }
+
+    var asrCatalog = httpContext.RequestServices.GetService<IAsrModelCatalog>();
+    if (asrCatalog is not null)
+    {
+        models.AddRange(asrCatalog.GetSupportedModels().Select(m => (object)new
+        {
+            id = m.Name,
+            @object = "model",
+            created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            owned_by = "fastttsr"
+        }));
+    }
 
     return Results.Ok(new { data = models, @object = "list" });
 })
     .WithName("ListModels")
     .WithTags("OpenAI Compatible")
     .WithSummary("List models (OpenAI compatible)")
-    .WithDescription("OpenAI-compatible endpoint for listing available TTS models")
+    .WithDescription("OpenAI-compatible endpoint for listing available TTS and/or ASR models, depending on SERVER_MODE")
     .Produces<object>(200);
 
+if (ttsEnabled)
+{
 app.MapPost("/v1/audio/speech", async (
     OpenAiSpeechRequest request,
     IModelCatalog modelCatalog,
@@ -342,6 +372,89 @@ app.MapPost("/v1/audio/speech", async (
     .Produces<byte[]>(200, "audio/wav")
     .Produces<ErrorResponse>(400)
     .Produces<ErrorResponse>(404);
+}
+
+if (asrEnabled)
+{
+app.MapGet("/api/asr-models", (IAsrModelCatalog asrModelCatalog) =>
+{
+    var models = asrModelCatalog.GetSupportedModels().Select(m => new AsrModelDefinitionResponse(
+        m.Name,
+        m.DisplayName,
+        m.Description,
+        m.SupportedLanguages,
+        m.SupportsLanguageAutoDetect));
+
+    return Results.Ok(models);
+})
+    .WithName("GetAsrModels")
+    .WithTags("Models")
+    .WithSummary("List available ASR models")
+    .WithDescription("Returns detailed information about all available speech-to-text models, including supported languages")
+    .Produces<IEnumerable<AsrModelDefinitionResponse>>(200);
+
+app.MapPost("/v1/audio/transcriptions", async (
+    HttpRequest httpRequest,
+    IAsrModelCatalog asrModelCatalog,
+    IModelCache modelCache,
+    IAsrTranscriber transcriber,
+    HttpContext httpContext,
+    CancellationToken cancellationToken) =>
+{
+    if (!httpRequest.HasFormContentType)
+    {
+        return Results.BadRequest(new ErrorResponse("invalid_request", "Expected multipart/form-data with an audio file."));
+    }
+
+    var form = await httpRequest.ReadFormAsync(cancellationToken);
+    var file = form.Files.GetFile("file");
+    var modelName = form["model"].ToString();
+    var language = form["language"].ToString();
+    var responseFormat = form["response_format"].ToString();
+
+    if (file is null || file.Length == 0)
+    {
+        return Results.BadRequest(new ErrorResponse("invalid_request", "An audio file is required."));
+    }
+
+    if (string.IsNullOrWhiteSpace(modelName) || !asrModelCatalog.TryGetModel(modelName, out var model))
+    {
+        return Results.NotFound(new ErrorResponse("model_not_found", "The requested model was not found."));
+    }
+
+    byte[] audioBytes;
+    using (var audioStream = new MemoryStream())
+    {
+        await file.CopyToAsync(audioStream, cancellationToken);
+        audioBytes = audioStream.ToArray();
+    }
+
+    var transcriptionRequest = new AudioTranscriptionRequest
+    {
+        Model = modelName,
+        Language = string.IsNullOrWhiteSpace(language) ? null : language,
+        ResponseFormat = string.IsNullOrWhiteSpace(responseFormat) ? "json" : responseFormat
+    };
+
+    var modelDirectory = await modelCache.EnsureModelAsync(model!, cancellationToken);
+    var result = await transcriber.TranscribeAsync(model!, modelDirectory, transcriptionRequest, audioBytes, cancellationToken);
+
+    httpContext.Response.Headers["X-Processing-Time"] = result.ProcessingTimeSeconds.ToString("F3");
+    httpContext.Response.Headers["X-Audio-Duration"] = result.AudioDurationSeconds.ToString("F2");
+    httpContext.Response.Headers["X-RTF"] = result.Rtf.ToString("F3");
+    httpContext.Response.Headers["X-Character-Count"] = result.CharacterCount.ToString();
+
+    return Results.Ok(new { text = result.Text });
+})
+    .WithName("CreateTranscription")
+    .WithTags("OpenAI Compatible")
+    .WithSummary("Transcribe audio to text")
+    .WithDescription("Generates a transcription from the uploaded audio file using the specified ASR model. OpenAI-compatible endpoint. Multipart/form-data fields: file (required), model (required), language (optional), response_format (optional). Supports whisper-base (multilingual, auto language detection) and nemotron-3.5 (40 language-locales).")
+    .Accepts<IFormFile>("multipart/form-data")
+    .Produces<object>(200)
+    .Produces<ErrorResponse>(400)
+    .Produces<ErrorResponse>(404);
+}
 
 app.MapFallbackToFile("/index.html");
 

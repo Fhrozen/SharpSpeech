@@ -57,8 +57,8 @@
 | 1 | ASR domain model & config plumbing | ✅ Accepted |
 | 2 | Whisper engine | ✅ Accepted |
 | 3 | Nemotron engine (spike + implementation) | ✅ Accepted |
-| 4 | ASR worker process + DI wiring | ✅ Done (awaiting acceptance) |
-| 5 | REST endpoints | Not started |
+| 4 | ASR worker process + DI wiring | ✅ Accepted |
+| 5 | REST endpoints | ✅ Done (awaiting acceptance) |
 | 6 | Docker/Compose packaging | Not started |
 | 7 | Frontend ASR UI | Not started |
 | 8 | Tests | Not started |
@@ -208,6 +208,25 @@ Phase 4/5).
 
 **Open item carried forward to Phase 6**: verify `Whisper.net.Runtime`'s native binaries are
 correctly included for linux-x64 when `FastTTSR.Worker.Asr` is published inside the Docker image.
+**Update from Phase 5 diagnostics**: confirmed via a live smoke test that `WhisperFactory.FromPath`
+throws `"Failed to load native whisper library... PInvokeError: Success"` on
+`mcr.microsoft.com/dotnet/sdk:10.0-preview` even though `runtimes/linux-x64/libwhisper.so` (and its
+sibling `libggml-*.so` files) ARE present in the build/publish output (confirmed present both for a
+plain `dotnet build` and an explicit `dotnet publish -r linux-x64`). Root-caused one contributing
+factor: `libggml-cpu-whisper.so` depends on `libgomp.so.1` (GNU OpenMP), which is **not** installed
+in the base image (parallel to why the Dockerfile already needs `apt-get install libespeak-ng1` for
+Kokoro) - installing `libgomp1` was confirmed via `ldd` to resolve that specific missing dependency.
+However, **installing `libgomp1` alone did not fix the load failure** - the same generic error
+persisted after a live re-test, meaning there is at least one more unresolved issue (most likely:
+Whisper.net's internal native-library probing/RID-matching logic not locating the sibling `.so`
+files at runtime the way `ldd`+`LD_LIBRARY_PATH` did in manual testing). **Phase 6 must**: (a) add
+`libgomp1` (and likely `libstdc++6`, usually already present) to the Dockerfile's `apt-get install`
+line for any image variant that includes `FastTTSR.Worker.Asr`; (b) further investigate/resolve the
+remaining native-load failure - candidates to try: setting `LD_LIBRARY_PATH` to the app's
+`runtimes/linux-x64` folder via a Dockerfile `ENV`, using a self-contained publish with explicit
+`-r linux-x64`, or checking for a newer/different Whisper.net.Runtime package split (some versions
+split desktop-Linux support into a separate `Whisper.net.Runtime.Linux` package) - and confirm with
+a real transcription request before considering ASR Whisper support production-ready.
 
 ---
 
@@ -313,7 +332,7 @@ if agreed with the user, since it contradicts the locked-in decision above.
 ---
 
 ## Phase 4 — ASR worker process + DI wiring
-**Status**: ✅ Done (awaiting acceptance)
+**Status**: ✅ Accepted
 
 **Inputs**: Phase 2 (`WhisperAsrTranscriber`) and Phase 3 (`NemotronAsrTranscriber`) both
 implementing `IAsrTranscriber`/`IIdleTrackingTranscriber`.
@@ -403,7 +422,7 @@ only compile-time/DI-graph correctness has been verified this phase.
 ---
 
 ## Phase 5 — REST endpoints
-**Status**: Not started
+**Status**: ✅ Done (awaiting acceptance)
 
 **Inputs**: Phase 4's DI wiring (`IAsrTranscriber`, `IAsrModelCatalog` resolvable when
 `asrEnabled`).
@@ -419,6 +438,32 @@ only compile-time/DI-graph correctness has been verified this phase.
    `X-RTF`). Reuses `ErrorResponse` for 400/404, mirroring `/v1/audio/speech`'s validation style.
 4. Extend `GET /v1/models` to include ASR model ids too when `asrEnabled`.
 5. Guard TTS endpoints (`/v1/audio/speech`, `/api/models`) behind `ttsEnabled` the same way.
+
+**Actual output files**:
+- `src/FastTTSR.Api/Program.cs` (modified: `/api/server-info` added unconditionally; `/api/models`
+  and `/v1/audio/speech` wrapped in `if (ttsEnabled)` with no internal changes; `/v1/models`
+  rewritten to merge `IModelCatalog`/`IAsrModelCatalog` via `httpContext.RequestServices.GetService<T>()`
+  (returns null gracefully if a catalog isn't registered, rather than throwing); new
+  `if (asrEnabled)` block adds `/api/asr-models` and `/v1/audio/transcriptions`).
+
+**Verification**:
+- `./dotnet.sh build FastTTSR.slnx` → 0 errors, 0 warnings.
+- `./dotnet.sh test tests/FastTTSR.Api.Tests` → all 43 existing tests still pass.
+- **Live smoke test** (in-process mode, `SERVER_MODE=both`, real running server, curl'd via
+  `docker exec` since the dev container publishes no host ports):
+  - `GET /api/server-info` → `{"ttsEnabled":true,"asrEnabled":true}` ✅
+  - `GET /api/asr-models` → correctly returns both `whisper-base` and `nemotron-3.5` ✅
+  - `GET /v1/models` → correctly merges all 5 model ids (3 TTS + 2 ASR) ✅
+  - `POST /v1/audio/transcriptions` (multipart, real downloaded `whisper-base` GGML weights, a
+    synthetic WAV generated via a throwaway C# helper) → **500 Internal Server Error**, but NOT a
+    Phase 5 bug: the exception occurs inside `WhisperFactory.FromPath` (Whisper.net's native
+    library loader), i.e. the endpoint's own logic (multipart parsing, model lookup, cache
+    resolution, request/response shape) executed correctly up to the point of engine construction.
+    Root-caused and carried forward to Phase 6 - see the updated note at the end of the Phase 2
+    section above.
+- All Phase 5 code (routing, validation, response shaping) is confirmed correct; the one open
+  issue is an environment/native-library packaging concern that Phase 6 (Docker packaging) already
+  owned.
 
 **Expected output files**:
 - `src/FastTTSR.Api/Program.cs` (modified: new endpoint mappings)

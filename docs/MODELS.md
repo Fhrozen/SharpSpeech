@@ -1,12 +1,13 @@
-# TTS Models Documentation
+# TTS & ASR Models Documentation
 
-FastTTSR supports multiple state-of-the-art Text-to-Speech models, each with unique characteristics and use cases.
+FastTTSR supports multiple state-of-the-art Text-to-Speech models and Speech-to-Text (ASR) models, each with unique characteristics and use cases.
 
 ## Table of Contents
 
 - [Model Overview](#model-overview)
 - [Kokoro Models](#kokoro-models)
 - [Supertonic Models](#supertonic-models)
+- [ASR Models](#asr-models)
 - [Voice Catalog](#voice-catalog)
 - [Language Support](#language-support)
 - [Model Comparison](#model-comparison)
@@ -16,11 +17,20 @@ FastTTSR supports multiple state-of-the-art Text-to-Speech models, each with uni
 
 ## Model Overview
 
+**Text-to-Speech**
+
 | Model | Type | Size | Quality | Speed | Languages | Voices | Best For |
 |-------|------|------|---------|-------|-----------|--------|----------|
 | kokoro-q4 | Quantized | ~100MB | Good | Fast | 9 | 51+ | Production, low latency |
 | kokoro-full | Full precision | ~350MB | Excellent | Medium | 9 | 51+ | High quality output |
 | supertonic-3 | Multilingual | ~200MB | Excellent | Medium | 3+ | 10 styles | Multilingual apps |
+
+**Speech-to-Text**
+
+| Model | Type | Size | Languages | Auto-Detect | Best For |
+|-------|------|------|-----------|--------------|----------|
+| whisper-base | GGML (whisper.cpp) | ~140MB | Multilingual | ✅ | Simple whole-file transcription |
+| nemotron-3.5 | ONNX (INT4) | ~600MB | 35+ | ✅ | Streaming/cache-aware decoding, broad language coverage |
 
 ---
 
@@ -186,6 +196,65 @@ Vocoder → PCM Audio → WAV File
 - Format: JSON configuration
 - Parameters: pitch, energy, speaking rate, style embedding
 - Customizable via JSON editing
+
+---
+
+## ASR Models
+
+FastTTSR also supports Speech-to-Text (ASR/transcription) via `/v1/audio/transcriptions`, when
+`SERVER_MODE` enables ASR (`asr` or `both`). Models are selected the same way as TTS: by `name` in
+the request.
+
+### Overview
+
+| Model | Engine | Languages | Auto-Detect | Notes |
+|-------|--------|-----------|--------------|-------|
+| `whisper-base` | Whisper.net (whisper.cpp/GGML) | Multilingual | ✅ | Whole-file batch transcription, requires 16kHz mono input (resampled automatically) |
+| `nemotron-3.5` | Raw ONNX Runtime (FastConformer-RNNT) | 35+ | ✅ | Cache-aware streaming architecture, chunked internally |
+
+### Whisper Base
+
+**Model ID:** `whisper-base`
+
+**Specifications:**
+- **Format:** GGML (`ggml-base.bin`), run via [Whisper.net](https://github.com/sandrohanea/whisper.net)
+- **Input:** 16kHz mono PCM (non-conforming input is resampled by `WavAudioUtils.ResampleToMono16kWav`)
+- **Language:** Auto-detected by default, or hinted via the `language` form field
+
+**Download URL:**
+- Model: `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin`
+
+**Processing Pipeline:**
+```
+Audio Upload → Resample to 16kHz mono → Whisper.net processor →
+Segment-by-segment transcription → Concatenated text
+```
+
+### Nemotron 3.5 ASR
+
+**Model ID:** `nemotron-3.5`
+
+**Specifications:**
+- **Format:** ONNX (INT4 quantized), 3 chained models: `encoder.onnx`, `decoder.onnx`, `joint.onnx`
+  (each with an accompanying `.onnx.data` weights file)
+- **Architecture:** Cache-aware streaming FastConformer-RNNT — processes audio in fixed-size
+  chunks (65 frames: 9 pre-encode cache + 56 new frames), threading `cache_last_channel`/
+  `cache_last_time` tensors between chunks so the model's internal state carries over as if
+  streaming, even though today's HTTP API is whole-file batch only
+- **Languages:** 35+ (see `src/FastTTSR.Api/config.json` for the full list)
+- **Known caveat:** mel-scale/framing/dither feature-extraction details are best-effort
+  reconstructions from the model's `audio_processor_config.json` (not independently verified
+  against a reference implementation) — transcription runs without crashing but accuracy on real
+  speech has not been rigorously validated; tracked in `docs/ASR_IMPLEMENTATION_PLAN.md`
+
+**Download URL (source):**
+- `https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4`
+
+**Processing Pipeline:**
+```
+Audio Upload → Feature extraction (log-mel) → Encoder (chunked, cache-threaded) →
+LSTM decoder/predictor → Joint network → Greedy RNNT decoding → Vocabulary lookup → Text
+```
 
 ---
 
@@ -538,6 +607,20 @@ curl -X POST http://localhost:5768/v1/audio/speech \
 - **Commercial Use:** Check terms
 - **Attribution:** Required
 - **Source:** https://huggingface.co/Supertone/supertonic-3
+
+### Whisper (whisper.cpp / GGML)
+
+- **License:** MIT
+- **Commercial Use:** ✅ Allowed
+- **Attribution:** Required
+- **Source:** https://github.com/ggerganov/whisper.cpp
+
+### Nemotron 3.5 ASR
+
+- **License:** Custom (check Hugging Face / NVIDIA terms)
+- **Commercial Use:** Check terms
+- **Attribution:** Required
+- **Source:** https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4
 
 **Note:** Always verify license terms before production use.
 

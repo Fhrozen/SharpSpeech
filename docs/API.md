@@ -1,6 +1,9 @@
 # API Reference
 
-FastTTSR provides a RESTful API with OpenAI-compatible endpoints for text-to-speech synthesis.
+FastTTSR provides a RESTful API with OpenAI-compatible endpoints for text-to-speech synthesis and
+speech-to-text transcription. Which endpoints are available depends on the `SERVER_MODE`
+environment variable the instance was started with (`tts` | `asr` | `both`, default `tts`) - check
+`GET /api/server-info` to discover this at runtime.
 
 ## Base URL
 
@@ -46,6 +49,31 @@ GET /health
 
 **Status Codes:**
 - `200 OK` - Service is healthy
+
+---
+
+### Server Info
+
+Returns which task types this server instance was started with.
+
+**Request:**
+```http
+GET /api/server-info
+```
+
+**Response:**
+```json
+{
+  "ttsEnabled": true,
+  "asrEnabled": false
+}
+```
+
+Driven by the `SERVER_MODE` environment variable (`tts` | `asr` | `both`). The frontend uses this
+to decide which UI panel(s)/tabs to show.
+
+**Status Codes:**
+- `200 OK` - Success
 
 ---
 
@@ -97,6 +125,41 @@ GET /api/models
       },
       ...
     ]
+  }
+]
+```
+
+**Status Codes:**
+- `200 OK` - Success
+
+---
+
+### List Available ASR Models (Detailed)
+
+Get detailed information about all available ASR (speech-to-text) models. Only present when
+`SERVER_MODE` enables ASR.
+
+**Request:**
+```http
+GET /api/asr-models
+```
+
+**Response:**
+```json
+[
+  {
+    "name": "whisper-base",
+    "displayName": "Whisper Base",
+    "description": "OpenAI Whisper base multilingual model (GGML), run via whisper.cpp.",
+    "supportedLanguages": [],
+    "supportsLanguageAutoDetect": true
+  },
+  {
+    "name": "nemotron-3.5",
+    "displayName": "Nemotron 3.5 ASR",
+    "description": "NVIDIA Nemotron 3.5 streaming ASR (cache-aware FastConformer-RNNT, INT4 ONNX).",
+    "supportedLanguages": ["en", "es", "fr", "it", "pt", "nl", "de", "tr", "ru", "ar", "hi", "ja", "ko", ".."],
+    "supportsLanguageAutoDetect": true
   }
 ]
 ```
@@ -243,6 +306,62 @@ Content-Length: <size>
 
 ---
 
+### Transcribe Audio (OpenAI Compatible)
+
+Convert speech audio to text. Only present when `SERVER_MODE` enables ASR.
+
+**Request:**
+```http
+POST /v1/audio/transcriptions
+Content-Type: multipart/form-data
+
+file=@sample.wav
+model=whisper-base
+language=en          (optional)
+response_format=json (optional, currently the only supported value)
+```
+
+**Form Fields:**
+
+| Field | Required | Default | Description |
+|-------|----------|---------|--------------|
+| `file` | **Yes** | - | Audio file to transcribe (any format `Whisper.net`/the WAV reader can decode; non-16kHz-mono audio is resampled automatically for Whisper) |
+| `model` | **Yes** | - | Model ID (`whisper-base`, `nemotron-3.5`) |
+| `language` | No | Auto-detect | ISO language code hint (e.g. `en`, `ja`); both models support auto-detection if omitted |
+| `response_format` | No | `json` | Currently only `json` is implemented |
+
+**Response:**
+```json
+{
+  "text": "Hello, this is a test of the transcription system."
+}
+```
+
+**Response Headers:**
+```
+X-Processing-Time: 0.842      # seconds spent transcribing
+X-Audio-Duration: 3.10        # duration of the input audio, seconds
+X-RTF: 0.272                  # real-time factor (processing time / audio duration)
+X-Character-Count: 52         # length of the returned text
+```
+
+**Status Codes:**
+- `200 OK` - Success
+- `400 Bad Request` - Missing/invalid form data (e.g. no file provided, not `multipart/form-data`)
+- `404 Not Found` - Model not found
+
+**Error Response Format:**
+```json
+{
+  "error": {
+    "code": "model_not_found",
+    "message": "The requested model was not found."
+  }
+}
+```
+
+---
+
 ## cURL Examples
 
 ### Basic Synthesis (Kokoro)
@@ -327,6 +446,24 @@ curl -X POST http://localhost:5768/v1/audio/speech \
   --output supertonic.wav
 ```
 
+### Transcribe Audio (Whisper)
+
+```bash
+curl -X POST http://localhost:5768/v1/audio/transcriptions \
+  -F file=@sample.wav \
+  -F model=whisper-base
+```
+
+### Transcribe Audio (Nemotron, with a language hint)
+
+```bash
+curl -X POST http://localhost:5768/v1/audio/transcriptions \
+  -F file=@sample.wav \
+  -F model=nemotron-3.5 \
+  -F language=en \
+  -i
+```
+
 ---
 
 ## Python Examples
@@ -356,6 +493,28 @@ else:
     print(response.json())
 ```
 
+### Transcribing Audio
+
+```python
+import requests
+
+url = "http://localhost:5768/v1/audio/transcriptions"
+
+with open("sample.wav", "rb") as f:
+    response = requests.post(
+        url,
+        files={"file": f},
+        data={"model": "whisper-base", "language": "en"}
+    )
+
+if response.status_code == 200:
+    print(response.json()["text"])
+    print("RTF:", response.headers.get("X-RTF"))
+else:
+    print(f"Error: {response.status_code}")
+    print(response.json())
+```
+
 ### Using OpenAI SDK
 
 ```python
@@ -374,6 +533,14 @@ response = client.audio.speech.create(
 )
 
 response.stream_to_file("output.wav")
+
+# ASR (Whisper-compatible) - only when SERVER_MODE enables ASR
+with open("sample.wav", "rb") as audio_file:
+    transcript = client.audio.transcriptions.create(
+        model="whisper-base",
+        file=audio_file
+    )
+print(transcript.text)
 ```
 
 ---

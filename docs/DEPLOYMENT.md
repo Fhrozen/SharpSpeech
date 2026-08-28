@@ -42,9 +42,11 @@ services:
       - "127.0.0.1:5768:5768"  # Only bind to localhost
     environment:
       HTTP_PORT: 5768
+      SERVER_MODE: both              # tts | asr | both
       MODEL_CACHE_DIR: /cache
       ESPEAK_DATA_DIR: /app/assets/espeak-ng-data
       MODEL_IDLE_TIMEOUT_SECONDS: 60
+      AsrWorkerOptions__IdleTimeoutSeconds: 60
       Logging__LogLevel__Default: Warning
       Logging__LogLevel__Microsoft.AspNetCore: Error
     volumes:
@@ -53,7 +55,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4G
+          memory: 4G    # bump to 6-8G if SERVER_MODE includes asr (Nemotron weights are ~600MB+
+                         # on disk and require more headroom once loaded than TTS models alone)
           cpus: '2.0'
         reservations:
           memory: 1G
@@ -104,7 +107,28 @@ docker compose logs -f
 
 # Test API
 curl http://localhost:5768/health
+curl http://localhost:5768/api/server-info   # confirms which of TTS/ASR are active
 ```
+
+### Choosing a Server Mode / Image Variant
+
+`SERVER_MODE` (`tts` | `asr` | `both`, default `tts`) controls which endpoints/workers a running
+container serves. To also ship a smaller, single-purpose image instead of building/running the
+default multi-purpose one, build with `docker build --target <stage>`:
+
+```bash
+# TTS-only image (smaller, no Whisper/Nemotron dependencies loaded)
+docker build --target runtime-tts -t fastttsr:tts .
+
+# ASR-only image
+docker build --target runtime-asr -t fastttsr:asr .
+
+# Both (default target if omitted)
+docker build --target runtime-all -t fastttsr:all .
+```
+
+Run each with the matching `SERVER_MODE` env var. See `docker-compose.yml` for commented-out
+example `fastttsr-tts`/`fastttsr-asr` services using this pattern.
 
 ---
 
@@ -598,8 +622,9 @@ kubectl apply -f hpa.yaml
   - [ ] Resource usage profiled
 
 - [ ] **Resource Planning**
-  - [ ] CPU/memory requirements calculated
-  - [ ] Storage requirements estimated
+  - [ ] `SERVER_MODE` decided (`tts`/`asr`/`both`) and matching image variant built
+  - [ ] CPU/memory requirements calculated (ASR - especially Nemotron - needs more headroom than TTS-only)
+  - [ ] Storage requirements estimated (ASR models add ~1GB+ to `MODEL_CACHE_DIR`)
   - [ ] Network bandwidth planned
   - [ ] Cost estimates reviewed
 
@@ -613,9 +638,11 @@ kubectl apply -f hpa.yaml
 
 - [ ] **Verification**
   - [ ] Health check responding
+  - [ ] `GET /api/server-info` reports the expected `ttsEnabled`/`asrEnabled` values
   - [ ] API endpoints functional
   - [ ] Models downloading correctly
-  - [ ] Audio generation working
+  - [ ] Audio generation working (if TTS enabled)
+  - [ ] Transcription working (if ASR enabled)
 
 - [ ] **Monitoring**
   - [ ] Logs streaming correctly

@@ -12,10 +12,14 @@ FastTTSR can be configured through environment variables, configuration files, a
 | `HTTPS_PORT` | - | HTTPS port (optional, requires certificate) |
 | `ASPNETCORE_URLS` | `http://+:8080` | ASP.NET Core listening URLs |
 | `HOST_PORT` | `5768` | Docker host port mapping (docker-compose only) |
+| `SERVER_MODE` | `tts` | Which task types to serve: `tts`, `asr`, or `both`. Gates TTS/ASR service registration and endpoint mapping - see [Architecture](ARCHITECTURE.md#asr-architecture) |
 
 **Example:**
 ```bash
 HTTP_PORT=8080 dotnet run
+
+# Serve both TTS and ASR from one instance
+SERVER_MODE=both dotnet run
 ```
 
 ### Model Configuration
@@ -72,6 +76,29 @@ Idle Timeout    Memory Usage      First Request Latency
 ```bash
 Logging__LogLevel__Default=Debug \
 Logging__LogLevel__Microsoft.AspNetCore=Information \
+dotnet run
+```
+
+### Worker Process Configuration
+
+TTS and ASR each run in their own out-of-process worker (`WorkerOptions`/`AsrWorkerOptions`
+sections, bound from environment via the standard ASP.NET Core `Section__Property` convention).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WorkerOptions__Enabled` | `true` | Use the out-of-process TTS worker (`false` = in-process synthesizers) |
+| `WorkerOptions__ExecutablePath` | `./FastTTSR.Worker` | Path to the TTS worker executable |
+| `WorkerOptions__IdleTimeoutSeconds` | `60` | Seconds of inactivity before the TTS worker self-terminates |
+| `WorkerOptions__PortRangeStart` | `50051` | Starting port for the TTS worker's gRPC server |
+| `AsrWorkerOptions__Enabled` | `true` | Use the out-of-process ASR worker (`false` = in-process transcribers) |
+| `AsrWorkerOptions__ExecutablePath` | `./worker-asr/FastTTSR.Worker.Asr` | Path to the ASR worker executable |
+| `AsrWorkerOptions__IdleTimeoutSeconds` | `60` | Seconds of inactivity before the ASR worker self-terminates |
+| `AsrWorkerOptions__PortRangeStart` | `50151` | Starting port for the ASR worker's gRPC server (distinct range from TTS's `50051+`) |
+
+**Example:**
+```bash
+AsrWorkerOptions__IdleTimeoutSeconds=120 \
+AsrWorkerOptions__PortRangeStart=50151 \
 dotnet run
 ```
 
@@ -207,7 +234,8 @@ Override settings for development environment:
 
 Located at `src/FastTTSR.Api/config.json` or path specified by `MODEL_CONFIG_PATH`.
 
-Defines available TTS models, their assets, and metadata.
+Defines available TTS models (`models` array) and ASR models (`asrModels` array), their assets,
+and metadata. Both are loaded from the same file.
 
 **Structure:**
 ```json
@@ -316,6 +344,63 @@ Defines available TTS models, their assets, and metadata.
 }
 ```
 
+#### ASR Model Definition Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | **Yes** | Unique model ID |
+| `displayName` | string | No | Human-readable name |
+| `description` | string | No | Model description |
+| `engine` | string | **Yes** | Engine type: `whisper` or `nemotron-3.5` |
+| `modelPath` | string | Whisper only | Relative path to the `.bin` GGML model file |
+| `assets` | array | **Yes** | List of downloadable assets |
+| `supportedLanguages` | array | No | Supported language codes (empty = relies on auto-detect) |
+| `supportsLanguageAutoDetect` | bool | No | Whether the model can auto-detect the spoken language |
+
+#### Example: Whisper Model
+
+```json
+{
+  "name": "whisper-base",
+  "displayName": "Whisper Base",
+  "description": "OpenAI Whisper base multilingual model (GGML), run via whisper.cpp.",
+  "engine": "whisper",
+  "modelPath": "ggml-base.bin",
+  "assets": [
+    {
+      "relativePath": "ggml-base.bin",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
+    }
+  ],
+  "supportedLanguages": [],
+  "supportsLanguageAutoDetect": true
+}
+```
+
+#### Example: Nemotron Model
+
+```json
+{
+  "name": "nemotron-3.5",
+  "displayName": "Nemotron 3.5 ASR",
+  "description": "NVIDIA Nemotron 3.5 streaming ASR (cache-aware FastConformer-RNNT, INT4 ONNX).",
+  "engine": "nemotron-3.5",
+  "modelPath": "",
+  "assets": [
+    { "relativePath": "encoder.onnx", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/encoder.onnx" },
+    { "relativePath": "encoder.onnx.data", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/encoder.onnx.data" },
+    { "relativePath": "decoder.onnx", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/decoder.onnx" },
+    { "relativePath": "joint.onnx", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/joint.onnx" },
+    { "relativePath": "vocab.txt", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/vocab.txt" }
+  ],
+  "supportedLanguages": ["en", "es", "fr", "ja", "..."],
+  "supportsLanguageAutoDetect": true
+}
+```
+
+> The full asset list (encoder/decoder/joint each ship an accompanying `.onnx.data` file, plus
+> `audio_processor_config.json` and `tokenizer.json`) is in `src/FastTTSR.Api/config.json`.
+
 ---
 
 ## Docker Compose Configuration
@@ -331,13 +416,21 @@ services:
     environment:
       HTTP_PORT: ${HTTP_PORT:-5768}
       HTTPS_PORT: ${HTTPS_PORT:-}
+      SERVER_MODE: ${SERVER_MODE:-both}
       MODEL_CACHE_DIR: /cache
       ESPEAK_DATA_DIR: /app/assets/espeak-ng-data
       MODEL_IDLE_TIMEOUT_SECONDS: ${MODEL_IDLE_TIMEOUT_SECONDS:-60}
+      AsrWorkerOptions__Enabled: ${AsrWorkerOptions__Enabled:-true}
+      AsrWorkerOptions__PortRangeStart: ${AsrWorkerOptions__PortRangeStart:-50151}
+      AsrWorkerOptions__IdleTimeoutSeconds: ${AsrWorkerOptions__IdleTimeoutSeconds:-60}
     volumes:
       - ./model-cache:/cache
       - ./assets:/app/assets:ro
 ```
+
+Use `docker build --target runtime-tts`/`runtime-asr`/`runtime-all` (see [Dockerfile](../Dockerfile))
+to build a smaller single-purpose image instead of the default multi-purpose one; pair with
+`SERVER_MODE: tts`/`asr` accordingly.
 
 ### Environment File (.env)
 
@@ -348,9 +441,11 @@ Create a `.env` file in the project root:
 HOST_PORT=5768
 HTTP_PORT=5768
 HTTPS_PORT=
+SERVER_MODE=both
 
 # Model Configuration
 MODEL_IDLE_TIMEOUT_SECONDS=60
+AsrWorkerOptions__IdleTimeoutSeconds=60
 
 # Logging
 Logging__LogLevel__Default=Information

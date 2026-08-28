@@ -60,9 +60,9 @@
 | 4 | ASR worker process + DI wiring | ✅ Accepted |
 | 5 | REST endpoints | ✅ Accepted |
 | 6 | Docker/Compose packaging | ✅ Accepted |
-| 7 | Frontend ASR UI | ✅ Done (awaiting acceptance) |
-| 8 | Tests | 🚧 In progress (circular tests done) |
-| 9 | Documentation update (final) | Not started |
+| 7 | Frontend ASR UI | ✅ Accepted |
+| 8 | Tests | ✅ Done (awaiting acceptance) |
+| 9 | Documentation update (final) | ✅ Done (awaiting acceptance) |
 
 ---
 
@@ -548,7 +548,7 @@ runtime-all`, both in-process AND full worker mode):
 ---
 
 ## Phase 7 — Frontend ASR UI
-**Status**: ✅ Done (awaiting acceptance)
+**Status**: ✅ Accepted
 
 **Inputs**: Phase 5's endpoint contracts (`/api/server-info`, `/api/asr-models`,
 `/v1/audio/transcriptions`).
@@ -600,23 +600,52 @@ runtime-all`, both in-process AND full worker mode):
 
 
 ## Phase 8 — Tests
-**Status**: 🚧 In progress (circular TTS->ASR model tests implemented ahead of schedule, between
-Phase 5 and Phase 6, at the user's request; unit-test-level coverage below is still pending)
+**Status**: ✅ Done (awaiting acceptance)
 
 **Inputs**: functioning engines (Phase 2/3), endpoints (Phase 5).
 
 **Planned changes**:
 1. `tests/FastTTSR.Api.Tests/AsrModelCatalogTests.cs` (mirrors `ModelCatalogTests.cs`).
 2. `tests/FastTTSR.Api.Tests/AsrTranscriberRouterTests.cs`.
-3. `tests/FastTTSR.Api.IntegrationTests/SpeechTranscriptionTests.cs` (mirrors
-   `SpeechSynthesisTests.cs`): POST small sample WAV to `/v1/audio/transcriptions` for the whisper
-   model, assert 200 + non-empty text; add a Nemotron case once Phase 3 is confirmed working.
+3. ~~`tests/FastTTSR.Api.IntegrationTests/SpeechTranscriptionTests.cs`~~ — **superseded**: this
+   would have downloaded real Whisper/Nemotron weights inside the always-run `integration-tests`
+   Docker profile, which contradicts the later, explicit user decision that ASR-with-real-models
+   testing must be opt-in only and excluded from CI (see "Circular TTS->ASR model tests" below,
+   which already exercises `/v1/audio/transcriptions` end-to-end with real models for both
+   engines and is the intended home for this kind of coverage).
 4. Extend `ModelHealthTests.cs` pattern for `/api/server-info`.
 
-**Expected output files** (still pending):
-- `tests/FastTTSR.Api.Tests/AsrModelCatalogTests.cs` (new)
-- `tests/FastTTSR.Api.Tests/AsrTranscriberRouterTests.cs` (new)
-- `tests/FastTTSR.Api.IntegrationTests/ModelHealthTests.cs` (modified)
+**Actual output files**:
+- `tests/FastTTSR.Api.Tests/AsrModelCatalogTests.cs` (new): catalog contains `whisper-base`/
+  `nemotron-3.5`, correct `Engine` strings, Whisper's `ModelPath` is one of its own `Assets`,
+  Nemotron exposes >10 `SupportedLanguages` including `en`/`ja`, Nemotron declares all 3
+  encoder/decoder/joint `.onnx`+`.onnx.data` assets plus config/vocab files, unknown model name
+  returns `false`, `GetSupportedModels()` returns exactly both entries.
+- `tests/FastTTSR.Api.Tests/AsrTranscriberRouterTests.cs` (new): instantiates the real
+  `AsrTranscriberRouter` with real (but otherwise idle) `WhisperAsrTranscriber`/
+  `NemotronAsrTranscriber` and a bogus model directory — no real model weights needed since each
+  engine fails fast (Whisper's explicit `FileNotFoundException` on the missing `.bin` file vs.
+  Nemotron's `InferenceSession` constructor failing while opening the missing `encoder.onnx`) and
+  the failure's identity itself proves which branch the router picked. Covers: `engine="whisper"`
+  routes to Whisper, `engine="nemotron-3.5"` (and case-insensitively `"NEMOTRON-3.5"`) routes to
+  Nemotron, an unrecognized engine falls through to Whisper's default branch (which then rejects
+  it with its own `InvalidOperationException` — proving it was *routed* there, even though Whisper
+  itself is strict about the engine string matching exactly `"whisper"`), and `GetLoadedEngines()`
+  starts empty.
+- `tests/FastTTSR.Api.IntegrationTests/ModelHealthTests.cs` (modified): added
+  `ServerInfo_ShouldReflectConfiguredServerMode`, which re-derives the expected
+  `ttsEnabled`/`asrEnabled` from the `SERVER_MODE` env var the same way `Program.cs` does, then
+  asserts `GET /api/server-info` matches — correct under whichever mode a given test run/container
+  is actually configured for, no real ASR models required.
+
+**Verification performed**:
+- `./dotnet.sh build FastTTSR.slnx` — 0 errors.
+- `./dotnet.sh test tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj` — 54/54 passed (was 43
+  before this phase; +11 new ASR tests), 0 failed, 0 skipped.
+- Did not re-run `tests/FastTTSR.Api.IntegrationTests` (Docker-based, requires downloaded TTS
+  models) or the opt-in `AsrCircularTests` this phase — no production code changed, only test
+  additions plus one pre-existing test file edit that doesn't touch ASR-model-requiring code
+  paths.
 
 ### Circular TTS->ASR model tests (done, implemented ahead of schedule)
 
@@ -702,7 +731,7 @@ to serialize concurrent ensure-calls for the same model.
 ---
 
 ## Phase 9 — Documentation update (final)
-**Status**: Not started
+**Status**: ✅ Done (awaiting acceptance)
 
 **Inputs**: all prior phases complete.
 
@@ -715,6 +744,43 @@ to serialize concurrent ensure-calls for the same model.
 4. Confirm no doc references stale info (e.g. "single worker" or "TTS-only" assumptions).
 5. Mark this plan document's status tracker fully `✅ Accepted` and add a short "complete" banner
    at the top.
+
+**Actual output files**:
+- `README.md` (modified): ASR-aware intro/features, `SERVER_MODE` quick-start example, ASR
+  endpoints in the endpoint table, ASR models table, `SERVER_MODE` env var, opt-in
+  `ASR_MODEL_TESTS` testing example, architecture diagram pointer.
+- `docs/ARCHITECTURE.md` (modified): intro/overview note about `SERVER_MODE`, new "ASR Layer
+  (parallel to TTS)" subsection under Core Components with a TTS↔ASR component-mapping table and
+  engine descriptions, updated endpoint list, updated "Adding New Models" extension point.
+- `docs/API.md` (modified): new `GET /api/server-info`, `GET /api/asr-models`, and
+  `POST /v1/audio/transcriptions` endpoint docs (request/response/headers/errors), cURL and
+  Python (`requests` + OpenAI SDK) transcription examples.
+- `docs/CONFIGURATION.md` (modified): `SERVER_MODE` env var, new "Worker Process Configuration"
+  section (`WorkerOptions__*`/`AsrWorkerOptions__*`), ASR model config.json fields + Whisper/
+  Nemotron examples, `SERVER_MODE`/`AsrWorkerOptions__*` added to the docker-compose.yml and
+  `.env` examples.
+- `docs/MODELS.md` (modified): retitled to "TTS & ASR Models Documentation", new ASR row in the
+  Model Overview table, new "ASR Models" section (Whisper Base + Nemotron 3.5 ASR, including the
+  documented feature-extraction accuracy caveat), ASR licensing entries.
+- `docs/DEPLOYMENT.md` (modified): `SERVER_MODE`/`AsrWorkerOptions__*` added to the production
+  docker-compose example (with a memory-sizing note for ASR), new "Choosing a Server Mode / Image
+  Variant" subsection (`docker build --target runtime-tts/-asr/-all`), production checklist items
+  for `SERVER_MODE` and `/api/server-info` verification.
+- `docs/TROUBLESHOOTING.md` (modified): new "ASR Issues" section covering the real bugs found
+  during implementation (Whisper native-lib/`LD_LIBRARY_PATH` failure, 16kHz-input requirement,
+  `ModelCache` concurrent-download race, Nemotron accuracy caveat, `SERVER_MODE`-gated 404s), plus
+  a `SERVER_MODE` check added to the existing 404 troubleshooting steps.
+- `docs/LLM_WIKI.md`: already kept current phase-by-phase throughout Phases -1-8 (per the
+  established maintenance rule) - no further changes needed for Phase 9 beyond what was already
+  recorded.
+
+**Verification performed**:
+- Manual review pass across all six docs for stale "TTS-only"/single-worker phrasing - none found
+  beyond what was intentionally left as historical context (e.g. `SUPPORTED` model badges).
+- No build step applies to Markdown docs; cross-checked all newly-documented env vars
+  (`SERVER_MODE`, `AsrWorkerOptions__*`) and endpoint contracts (`/api/server-info`,
+  `/api/asr-models`, `/v1/audio/transcriptions`) directly against `Program.cs`/`Options/*.cs`/
+  `Contracts/*.cs` source to avoid drift.
 
 ---
 

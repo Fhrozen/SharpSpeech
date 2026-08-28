@@ -1,8 +1,15 @@
 # Architecture
 
-FastTTSR is designed as a high-performance, production-ready Text-to-Speech service with a clean separation of concerns and optimized resource management.
+FastTTSR is designed as a high-performance, production-ready Text-to-Speech **and** Speech-to-Text
+service with a clean separation of concerns and optimized resource management. Which task types a
+deployment serves is controlled by the `SERVER_MODE` environment variable (`tts` | `asr` | `both`,
+default `tts`); see [ASR Architecture](#asr-architecture) below for the transcription pipeline.
 
 ## System Overview
+
+> The diagram below shows the TTS request pipeline. ASR follows an analogous but separate
+> pipeline (own router, own engines, own worker process) - see
+> [ASR Architecture](#asr-architecture).
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -424,9 +431,12 @@ ps aux | grep FastTTSR.Worker
 
 **Key Endpoints:**
 - `GET /health` - Health checks for load balancers
-- `GET /api/models` - Detailed model information
-- `GET /v1/models` - OpenAI-compatible model listing
+- `GET /api/server-info` - Which task types (TTS/ASR) this server instance was started with
+- `GET /api/models` - Detailed TTS model information (present when `SERVER_MODE` enables TTS)
+- `GET /api/asr-models` - Detailed ASR model information (present when `SERVER_MODE` enables ASR)
+- `GET /v1/models` - OpenAI-compatible model listing (merges TTS + ASR catalogs)
 - `POST /v1/audio/speech` - OpenAI-compatible TTS synthesis
+- `POST /v1/audio/transcriptions` - OpenAI-compatible ASR transcription
 
 ### 2. Service Layer
 
@@ -573,6 +583,34 @@ ps aux | grep FastTTSR.Worker
 - Unloads models idle > `IdleTimeoutSeconds`
 - Reduces memory footprint in production
 - Models reload automatically on next request
+
+### 5. ASR Layer (parallel to TTS)
+
+Everything above has an ASR-side counterpart, following the exact same patterns:
+
+| TTS | ASR | Role |
+|-----|-----|------|
+| `ModelCatalog` | `AsrModelCatalog` | Model registry (`config.json`'s `asrModels` section, or built-in defaults for `whisper-base`/`nemotron-3.5`) |
+| `TtsSynthesizerRouter` | `AsrTranscriberRouter` | Routes by `model.Engine` (`whisper` vs `nemotron-3.5`) to the right transcriber |
+| `KokoroTtsSynthesizer` | `WhisperAsrTranscriber` | Single-engine pooling (one `WhisperAsrEngine`/whisper.cpp instance per loaded model) |
+| `SupertonicTtsSynthesizer` | `NemotronAsrTranscriber` | Multi-session-in-one-class (one `NemotronAsrEngine` wrapping 3 chained ONNX sessions: encoder/decoder/joint) |
+| `WorkerProcessManager` (TTS) | `WorkerProcessManager` (keyed `"asr"`) | Same worker-process class, registered twice via keyed DI so TTS and ASR workers coexist without conflict |
+| `ModelWarmupService`/`ModelIdleMonitorService` | `AsrModelWarmupService`/`AsrModelIdleMonitorService` | Same warmup/idle-unload behavior for ASR models |
+
+**Engines:**
+- **Whisper** (`WhisperAsrEngine`): wraps [Whisper.net](https://github.com/sandrohanea/whisper.net)
+  (whisper.cpp/GGML models). Requires exactly 16kHz mono PCM input - `WavAudioUtils.
+  ResampleToMono16kWav()` resamples whatever the client uploads (or whatever TTS produced, for the
+  circular tests) before transcription. Whole-file batch transcription only.
+- **Nemotron 3.5** (`NemotronAsrEngine`): raw `Microsoft.ML.OnnxRuntime`, cache-aware streaming
+  FastConformer-RNNT. Chains 3 `InferenceSession`s (encoder → LSTM decoder/predictor → joint),
+  threading `cache_last_channel`/`cache_last_time` tensors across 65-frame chunks to emulate
+  streaming decoding even though today's HTTP API only exposes whole-file transcription (chunking
+  happens *inside* the engine, not across separate HTTP requests).
+
+**Worker process**: a single `FastTTSR.Worker.Asr` executable internally routes Whisper vs.
+Nemotron by `model.Engine`, exactly mirroring how `FastTTSR.Worker` routes Kokoro vs. Supertonic -
+one ASR worker executable total, not two.
 
 ## Data Flow
 
@@ -747,10 +785,10 @@ Startup → Download → Load → Idle → Unload → Reload (on demand)
 ## Extension Points
 
 ### Adding New Models
-1. Define model in `config.json`
+1. Define model in `config.json` (`models` for TTS, `asrModels` for ASR)
 2. Implement engine in `Services/` if needed
 3. Add metadata in `*Metadata.cs`
-4. Register in `TtsSynthesizerRouter`
+4. Register in `TtsSynthesizerRouter` (TTS) or `AsrTranscriberRouter` (ASR)
 
 ### Custom Phonemization
 - Replace `EspeakWrapper` with custom implementation

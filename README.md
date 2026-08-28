@@ -5,20 +5,22 @@
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](https://www.docker.com/)
 [![OpenAI Compatible](https://img.shields.io/badge/OpenAI-Compatible-00A67E)](https://platform.openai.com/docs/api-reference/audio/createSpeech)
 
-**FastTTSR** is a high-performance Text-to-Speech REST API with OpenAI-compatible endpoints, **highly vibe-coded**:blush:. Built with .NET 10, it features a Vue.js frontend, Docker containerization, and support for multiple state-of-the-art TTS models including Kokoro and Supertonic-3.
+**FastTTSR** is a high-performance Text-to-Speech **and** Speech-to-Text REST API with OpenAI-compatible endpoints, **highly vibe-coded**:blush:. Built with .NET 10, it features a Vue.js frontend, Docker containerization, and support for multiple state-of-the-art TTS models (Kokoro, Supertonic-3) and ASR models (Whisper, Nemotron). Which task types a given deployment serves — TTS, ASR, or both — is controlled by a single `SERVER_MODE` environment variable.
 
 ## ✨ Features
 
-- 🎯 **OpenAI-Compatible API** - Drop-in replacement for OpenAI's `/v1/audio/speech` endpoint
+- 🎯 **OpenAI-Compatible API** - Drop-in replacement for OpenAI's `/v1/audio/speech` and `/v1/audio/transcriptions` endpoints
 - 🚀 **High Performance** - Custom ONNX inference engine with direct OnnxRuntime integration
-- 💾 **Worker Process Architecture** - OS-level memory isolation with automatic cleanup and guaranteed resource reclamation
-- 🌍 **Multilingual** - Support for 3+ languages including English, Japanese, Chinese, Spanish, French, and more
+- 🎙️ **Speech-to-Text (ASR)** - Whisper (whisper.cpp/GGML) and NVIDIA Nemotron 3.5 (cache-aware streaming FastConformer-RNNT, ONNX) transcription engines
+- 💾 **Worker Process Architecture** - OS-level memory isolation with automatic cleanup and guaranteed resource reclamation, for both TTS and ASR workers
+- 🌍 **Multilingual** - Support for 3+ TTS languages and 35+ ASR languages including English, Japanese, Chinese, Spanish, French, and more
 - 🎨 **Multiple TTS Models** - Kokoro (quantized & full precision) and Supertonic-3 models
 - 🎭 **Rich Voice Library** - 5+ speaker voices with diverse characteristics
+- 🔀 **Configurable Server Mode** - Run a single instance as TTS-only, ASR-only, or both via `SERVER_MODE`
 - 🔧 **Production Ready** - Built-in health checks, automatic model management, and graceful degradation
 - 📊 **Interactive Docs** - Swagger/OpenAPI documentation included
-- 🎨 **Modern UI** - Vue.js frontend with real-time audio preview and metrics
-- 🐳 **Docker Native** - Multi-stage builds with optimized containerization
+- 🎨 **Modern UI** - Vue.js frontend that adapts to the running server's capabilities (TTS tab, ASR tab, or both)
+- 🐳 **Docker Native** - Multi-stage builds with optimized containerization, selectable per-mode via `docker build --target`
 - 🧵 **Thread-Safe** - Advanced concurrency handling for multi-tenant deployments
 
 ## 🚀 Quick Start
@@ -50,6 +52,18 @@ curl -X POST http://localhost:5768/v1/audio/speech \
 
 The service will automatically download required models from Hugging Face on first startup.
 
+By default the container only serves TTS. To enable Speech-to-Text as well, set `SERVER_MODE`:
+
+```bash
+# tts (default) | asr | both
+SERVER_MODE=both docker compose up -d
+
+# Transcribe an audio file (Whisper by default)
+curl -X POST http://localhost:5768/v1/audio/transcriptions \
+  -F file=@sample.wav \
+  -F model=whisper-base
+```
+
 ## 📚 Documentation
 
 - **[Architecture](docs/ARCHITECTURE.md)** - System design and components
@@ -66,7 +80,8 @@ The service will automatically download required models from Hugging Face on fir
 - **Backend**: .NET 10 with ASP.NET Core Minimal APIs
 - **Frontend**: Vue.js 3.5 with TypeScript
 - **TTS Engine**: Microsoft.ML.OnnxRuntime + espeak-ng
-- **Models**: Kokoro-82M (ONNX) & Supertonic-3 (ONNX)
+- **ASR Engines**: Whisper.net (whisper.cpp/GGML) & Microsoft.ML.OnnxRuntime (Nemotron)
+- **Models**: Kokoro-82M & Supertonic-3 (TTS, ONNX); Whisper & Nemotron 3.5 (ASR, GGML/ONNX)
 - **Containerization**: Docker with multi-stage builds
 - **Build Tool**: pnpm for frontend dependencies
 
@@ -75,18 +90,30 @@ The service will automatically download required models from Hugging Face on fir
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | GET | Health check endpoint |
-| `/api/models` | GET | List available models with details |
-| `/v1/models` | GET | OpenAI-compatible model listing |
-| `/v1/audio/speech` | POST | OpenAI-compatible speech synthesis |
+| `/api/server-info` | GET | Which task types (TTS/ASR) this server instance was started with |
+| `/api/models` | GET | List available TTS models with details (gated by `SERVER_MODE`) |
+| `/api/asr-models` | GET | List available ASR models with details (gated by `SERVER_MODE`) |
+| `/v1/models` | GET | OpenAI-compatible model listing (merges TTS + ASR catalogs) |
+| `/v1/audio/speech` | POST | OpenAI-compatible speech synthesis (gated by `SERVER_MODE`) |
+| `/v1/audio/transcriptions` | POST | OpenAI-compatible audio transcription (gated by `SERVER_MODE`) |
 | `/swagger` | GET | Interactive API documentation |
 
 ## 🎭 Supported Models
+
+**Text-to-Speech**
 
 | Model | Description | Languages | Voices | Quality |
 |-------|-------------|-----------|--------|---------|
 | `kokoro-q4` | Quantized Kokoro 82M | 3+ | 5+ | Fast, low memory |
 | `kokoro-full` | Full precision Kokoro 82M | 3+ | 5+ | High quality |
 | `supertonic-3` | Supertonic multilingual | 3+ | 10 styles | Production grade |
+
+**Speech-to-Text**
+
+| Model | Description | Languages | Notes |
+|-------|-------------|-----------|-------|
+| `whisper-base` | OpenAI Whisper base (GGML, via whisper.cpp) | Auto-detect + multilingual | Whole-file batch transcription |
+| `nemotron-3.5` | NVIDIA Nemotron 3.5 streaming ASR (FastConformer-RNNT, INT4 ONNX) | 35+ | Cache-aware chunked decoding |
 
 See [Models Documentation](docs/MODELS.md) for detailed information about each model.
 
@@ -100,6 +127,7 @@ Key environment variables:
 
 ```bash
 HTTP_PORT=5768                        # HTTP port
+SERVER_MODE=tts                       # tts (default) | asr | both
 MODEL_CACHE_DIR=/cache                # Model cache directory
 ESPEAK_DATA_DIR=/app/assets/espeak-ng-data  # espeak-ng data
 MODEL_IDLE_TIMEOUT_SECONDS=60         # Model unload timeout
@@ -135,6 +163,12 @@ See [Development Guide](docs/DEVELOPMENT.md) for detailed setup instructions.
 # Run specific test suite
 dotnet test tests/FastTTSR.Api.Tests
 dotnet test tests/FastTTSR.Api.IntegrationTests
+
+# Opt-in: real-model circular TTS->ASR tests (downloads GB-scale weights, skipped by default and
+# excluded from CI)
+ASR_MODEL_TESTS=1 dotnet test tests/FastTTSR.Api.IntegrationTests --filter "Category=AsrModelTests"
+# or
+./tests/run-tests.sh asr-model-tests
 ```
 
 ## 📦 Production Deployment
@@ -229,9 +263,15 @@ HTTP Request → KokoroTtsSynthesizer
             PCM16 WAV Output
 ```
 
+ASR follows an analogous path (`AsrTranscriberRouter` → `WhisperAsrTranscriber`/
+`NemotronAsrTranscriber` → `WhisperAsrEngine`/`NemotronAsrEngine`), running in its own worker
+process when `SERVER_MODE` enables ASR. See [Architecture](docs/ARCHITECTURE.md) for the full
+diagram covering both TTS and ASR.
+
 ## Requirements
 
 - .NET 10.0 SDK (preview)
 - Docker with Compose v2
 - Node.js 24+ with pnpm (for frontend development)
-- espeak-ng library (included in Docker image)
+- espeak-ng library (included in Docker image, TTS only)
+

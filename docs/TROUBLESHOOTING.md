@@ -9,6 +9,7 @@ This guide covers common issues and their solutions when working with FastTTSR.
 - [Performance Issues](#performance-issues)
 - [API Issues](#api-issues)
 - [Model Issues](#model-issues)
+- [ASR Issues](#asr-issues)
 - [Docker Issues](#docker-issues)
 - [Audio Quality Issues](#audio-quality-issues)
 - [Debugging Tools](#debugging-tools)
@@ -369,6 +370,15 @@ cat src/FastTTSR.Api/config.json
 ls -la model-cache/
 ```
 
+**4. Check `/v1/audio/transcriptions` or `/api/asr-models` returning 404 for the whole route (not
+just "model not found"):**
+This means the server wasn't started with ASR enabled. Check `SERVER_MODE`:
+```bash
+curl http://localhost:5768/api/server-info
+# {"ttsEnabled": true, "asrEnabled": false}  <- ASR routes aren't mapped at all
+```
+Restart with `SERVER_MODE=asr` or `SERVER_MODE=both`.
+
 ### 400 Bad Request
 
 **Error:**
@@ -584,6 +594,65 @@ wget https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voi
 ```bash
 ls -la /usr/share/espeak-ng-data/
 ```
+
+---
+
+## ASR Issues
+
+### Whisper: "Cannot load the library on this platform... PInvokeError: Success"
+
+**Cause:** `Whisper.net.Runtime` ships its native `.so` files under `runtimes/<rid>/` instead of the
+standard `runtimes/<rid>/native/` layout .NET's native library resolver expects, and the native
+library itself depends on OpenMP (`libgomp.so.1`), which isn't installed by default in slim
+Docker base images.
+
+**Solution:**
+1. Install `libgomp1` in the runtime image (`apt-get install -y libgomp1`).
+2. Point `LD_LIBRARY_PATH` at wherever the published output placed the Whisper native libs, e.g.:
+```dockerfile
+ENV LD_LIBRARY_PATH=/app/runtimes/linux-x64:/app/worker-asr/runtimes/linux-x64
+```
+Both are already applied in the shipped `Dockerfile`'s `runtime-asr`/`runtime-all` stages - if
+you're building a custom image or running the worker outside Docker, replicate both steps.
+
+### Whisper: "Only 16KHz sample rate is supported" / `NotSupportedWaveException`
+
+**Cause:** Whisper.net requires exactly 16kHz mono PCM input and does not resample internally.
+TTS-generated audio (Kokoro is 24kHz, Supertonic-3 is 22050Hz) or arbitrary user uploads will not
+match this.
+
+**Solution:** Already handled - `WhisperAsrEngine` calls `WavAudioUtils.ResampleToMono16kWav()` on
+the uploaded audio before transcription. If you see this error, verify you're running a version
+that includes this fix (see `docs/LLM_WIKI.md`'s "Known fixes" section).
+
+### Intermittent 500s when downloading a model for the first time under load
+
+**Cause:** A background warmup service (`ModelWarmupService`/`AsrModelWarmupService`) racing an
+on-demand request for the same not-yet-cached model could concurrently write the same asset
+file, corrupting it. Affects both TTS and ASR models.
+
+**Solution:** Already fixed - `ModelCache.EnsureModelAsync` serializes per-model-name downloads via
+a `ConcurrentDictionary<string, SemaphoreSlim>`. If you still see this on an older build, update to
+a version that includes the fix.
+
+### Nemotron transcription runs but output is garbled/inaccurate
+
+**Cause:** Nemotron's mel-scale/framing/dither feature-extraction parameters were reconstructed
+from `audio_processor_config.json` and the model's own ONNX graph shapes, not validated against a
+reference implementation with known-good ground truth. This is a known, tracked limitation, not a
+crash - see `docs/ASR_IMPLEMENTATION_PLAN.md` Phase 3 for details. If accuracy matters for your use
+case today, prefer `whisper-base` for Nemotron's currently-unverified languages/scenarios.
+
+### `/api/asr-models` or `/v1/audio/transcriptions` return 404 for the whole route
+
+**Cause:** The server wasn't started with ASR enabled.
+
+**Solution:**
+```bash
+curl http://localhost:5768/api/server-info
+# {"ttsEnabled": true, "asrEnabled": false}
+```
+Restart the container with `SERVER_MODE=asr` or `SERVER_MODE=both`.
 
 ---
 

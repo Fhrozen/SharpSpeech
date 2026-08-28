@@ -206,9 +206,15 @@ Vue 3 + TypeScript, Composition API, no UI framework/router/state library (delib
 
 ## Testing
 - `tests/FastTTSR.Api.Tests`: unit tests (`ModelCatalogTests`, `KokoroMetadataTests`,
-  `SherpaOnnxTtsSynthesizerTests`, `SpeechEndpointTests`, `TextSanitizerTests`).
+  `SherpaOnnxTtsSynthesizerTests`, `SpeechEndpointTests`, `TextSanitizerTests`,
+  `AsrModelCatalogTests`, `AsrTranscriberRouterTests`). The ASR router test instantiates the real
+  `AsrTranscriberRouter`/`WhisperAsrTranscriber`/`NemotronAsrTranscriber` with a bogus model
+  directory — no real weights needed, since each engine fails fast in a distinguishable way
+  (Whisper's own `FileNotFoundException` vs. Nemotron's `InferenceSession` failing to open a
+  missing `encoder.onnx`), which is enough to prove routing went to the right engine.
 - `tests/FastTTSR.Api.IntegrationTests`: full-stack tests via Docker (`SpeechSynthesisTests`,
-  `ModelHealthTests`, `JapaneseConcurrencyTests`).
+  `ModelHealthTests` — including a `SERVER_MODE`-aware `/api/server-info` check,
+  `JapaneseConcurrencyTests`).
 - Run: `dotnet test tests/FastTTSR.Api.Tests`, or `./tests/run-tests.sh all` /
   `docker compose -f docker-compose.test.yml up --abort-on-container-exit` for integration.
 - Frontend: `cd frontend && pnpm install && pnpm run build` (runs `vue-tsc --noEmit` then `vite

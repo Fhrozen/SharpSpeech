@@ -34,6 +34,26 @@ public class ModelHealthTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.NotEmpty(models.Data);
     }
 
+    [Fact]
+    public async Task ServerInfo_ShouldReflectConfiguredServerMode()
+    {
+        // Arrange - mirror Program.cs's own SERVER_MODE parsing so this test is correct
+        // regardless of which mode this particular test run/container is configured for.
+        var serverMode = (Environment.GetEnvironmentVariable("SERVER_MODE") ?? "tts").Trim().ToLowerInvariant();
+        var expectedTtsEnabled = serverMode is "tts" or "both";
+        var expectedAsrEnabled = serverMode is "asr" or "both";
+
+        // Act
+        var response = await _client.GetAsync("/api/server-info");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var info = await response.Content.ReadFromJsonAsync<ServerInfoResponse>();
+        Assert.NotNull(info);
+        Assert.Equal(expectedTtsEnabled, info.TtsEnabled);
+        Assert.Equal(expectedAsrEnabled, info.AsrEnabled);
+    }
+
     [Theory]
     [InlineData("kokoro-q4")]
     [InlineData("kokoro-full")]

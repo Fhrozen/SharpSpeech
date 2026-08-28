@@ -58,8 +58,8 @@
 | 2 | Whisper engine | ✅ Accepted |
 | 3 | Nemotron engine (spike + implementation) | ✅ Accepted |
 | 4 | ASR worker process + DI wiring | ✅ Accepted |
-| 5 | REST endpoints | ✅ Done (awaiting acceptance) |
-| 6 | Docker/Compose packaging | Not started |
+| 5 | REST endpoints | ✅ Accepted |
+| 6 | Docker/Compose packaging | ✅ Done (awaiting acceptance) |
 | 7 | Frontend ASR UI | Not started |
 | 8 | Tests | 🚧 In progress (circular tests done) |
 | 9 | Documentation update (final) | Not started |
@@ -422,7 +422,7 @@ only compile-time/DI-graph correctness has been verified this phase.
 ---
 
 ## Phase 5 — REST endpoints
-**Status**: ✅ Done (awaiting acceptance)
+**Status**: ✅ Accepted
 
 **Inputs**: Phase 4's DI wiring (`IAsrTranscriber`, `IAsrModelCatalog` resolvable when
 `asrEnabled`).
@@ -471,7 +471,7 @@ only compile-time/DI-graph correctness has been verified this phase.
 ---
 
 ## Phase 6 — Docker/Compose packaging
-**Status**: Not started
+**Status**: ✅ Done (awaiting acceptance)
 
 **Inputs**: Phase 4 producing both worker executables (`FastTTSR.Worker`, `FastTTSR.Worker.Asr`).
 
@@ -489,10 +489,61 @@ only compile-time/DI-graph correctness has been verified this phase.
    snippets for tts-only/asr-only variants.
 3. `docker-compose.test.yml`: extend similarly if integration tests need an ASR-enabled container.
 
+**Deviation from plan (improvement)**: used Docker's native `--target <stage>` mechanism instead of
+an `ARG SERVER_MODE` + `FROM runtime-${SERVER_MODE}` trick. This is the standard, better-supported
+Docker idiom for exactly this "one Dockerfile, multiple selectable final images" use case - no ARG
+needed at all. `docker build --target runtime-tts|runtime-asr|runtime-all -t <tag> .`; omitting
+`--target` builds `runtime-all` by default (it's the last stage in the file).
+
+**Two real bugs were found and fixed while validating this in a real packaged image** (not just
+`dotnet run`/`dotnet build` as in earlier phases) - both were previously-tracked open risks from
+Phase 2/5, now resolved:
+1. **Whisper.net native library load failure** (`"Cannot load the library on this platform ...
+   PInvokeError: Success"`, tracked since Phase 2/5): root-caused to `Whisper.net.Runtime` shipping
+   native `.so` files under `runtimes/<rid>/` instead of the standard `runtimes/<rid>/native/`
+   layout, so the dynamic linker never finds sibling dependencies (`libggml-*.so`) without help -
+   `libgomp1` alone (already added) was necessary but not sufficient. **Fixed** by adding
+   `ENV LD_LIBRARY_PATH=/app/runtimes/linux-x64:/app/worker-asr/runtimes/linux-x64` to the
+   `runtime-asr`/`runtime-all` stages (covers both the API's own copy, used in in-process mode, and
+   the ASR worker's copy, used in worker mode). **Confirmed fixed** via a real packaged-image test
+   (see Validation below) - Whisper now transcribes correctly, e.g. `"Hello, this is a test of the
+   Whisper transcription pipeline."` for a matching TTS-generated input.
+2. **Whisper.net requires exactly 16kHz input and does not resample internally** (new finding, not
+   previously known - only surfaced once the native-library issue above was fixed and a real
+   transcription could actually be attempted): threw `Whisper.net.Wave.NotSupportedWaveException:
+   Only 16KHz sample rate is supported` for Kokoro-generated audio (24kHz). **Fixed**:
+   `WhisperAsrEngine.TranscribeAsync` now calls a new `WavAudioUtils.ResampleToMono16kWav(wavBytes)`
+   (reuses the existing `ReadMonoFloat` resampler, re-encodes as a 16kHz mono PCM16 WAV) before
+   handing audio to Whisper.net, mirroring what Nemotron's pipeline already did internally.
+
+**Validation performed** (against the real built `fastttsr:all` image, `docker build --target
+runtime-all`, both in-process AND full worker mode):
+- `./dotnet.sh build FastTTSR.slnx` → 0 errors after the `WhisperAsrEngine`/`WavAudioUtils` fix.
+- `docker build --target runtime-all -t fastttsr:all .` → succeeds (frontend + all 3 .NET projects
+  publish with `-r linux-x64 --self-contained false`).
+- In-process mode (`WorkerOptions__Enabled=false`, `AsrWorkerOptions__Enabled=false`): Whisper
+  transcription of a Kokoro-generated WAV → 200, correct text. Nemotron transcription → 200,
+  garbled text (still the known, tracked accuracy caveat - not a packaging issue).
+- **Full worker mode** (production default, no env overrides): `/v1/audio/speech` (Supertonic-3),
+  `/v1/audio/transcriptions` with `whisper-base` (correct text), and `/v1/audio/transcriptions`
+  with `nemotron-3.5` (garbled but non-crashing, same caveat) all returned 200 - confirms the ASR
+  worker subprocess correctly inherits `LD_LIBRARY_PATH` from its parent process.
+
 **Expected output files**:
 - `Dockerfile` (modified)
 - `docker-compose.yml` (modified)
 - `docker-compose.test.yml` (modified, if needed)
+
+**Actual output files**:
+- `Dockerfile` (rewritten: publishes all 3 projects with `-r linux-x64`, shared `runtime-base`
+  stage + `runtime-tts`/`runtime-asr`/`runtime-all` leaf stages, `libgomp1` added,
+  `LD_LIBRARY_PATH` set in ASR-capable stages)
+- `docker-compose.yml` (modified: `SERVER_MODE` + `AsrWorkerOptions__*` env passthrough, commented
+  tts-only/asr-only example services using `target:`)
+- `src/FastTTSR.Api/Services/WavAudioUtils.cs` (modified: new `ResampleToMono16kWav` helper)
+- `src/FastTTSR.Api/Services/WhisperAsrEngine.cs` (modified: resamples to 16kHz before Whisper.net)
+- `docker-compose.test.yml`/`Dockerfile.tests` already updated in the Phase 8 circular-tests work
+  (added earlier, ahead of this phase, at the user's request)
 
 ---
 

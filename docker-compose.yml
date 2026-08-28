@@ -3,15 +3,48 @@ services:
     # build:
     #   context: .
     #   dockerfile: Dockerfile
+    #   target: runtime-all   # or runtime-tts / runtime-asr for a smaller single-purpose image
     image: fhrozen/fast-ttsr:latest
     ports:
       - "${HOST_PORT:-5768}:${HTTP_PORT:-5768}"
     environment:
       HTTP_PORT: ${HTTP_PORT:-5768}
       HTTPS_PORT: ${HTTPS_PORT:-}
+      SERVER_MODE: ${SERVER_MODE:-both}
       MODEL_CACHE_DIR: /cache
       ESPEAK_DATA_DIR: /app/assets/espeak-ng-data
       MODEL_IDLE_TIMEOUT_SECONDS: ${MODEL_IDLE_TIMEOUT_SECONDS:-60}
+      AsrWorkerOptions__Enabled: ${AsrWorkerOptions__Enabled:-true}
+      AsrWorkerOptions__PortRangeStart: ${AsrWorkerOptions__PortRangeStart:-50151}
+      AsrWorkerOptions__IdleTimeoutSeconds: ${AsrWorkerOptions__IdleTimeoutSeconds:-60}
     volumes:
       - ./model-cache:/cache
       - ./assets:/app/assets:ro
+
+  # Example: TTS-only deployment, built locally from a smaller image variant.
+  # fastttsr-tts:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #     target: runtime-tts
+  #   ports:
+  #     - "5768:8080"
+  #   environment:
+  #     SERVER_MODE: tts
+  #   volumes:
+  #     - ./model-cache:/cache
+  #     - ./assets:/app/assets:ro
+
+  # Example: ASR-only deployment, built locally from a smaller image variant.
+  # fastttsr-asr:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #     target: runtime-asr
+  #   ports:
+  #     - "5769:8080"
+  #   environment:
+  #     SERVER_MODE: asr
+  #   volumes:
+  #     - ./model-cache:/cache
+  #     - ./assets:/app/assets:ro

@@ -140,12 +140,27 @@ Static frontend files are served from `wwwroot` (built by the frontend and copie
 build time); `MapFallbackToFile("/index.html")` handles SPA routing.
 
 ## Docker packaging
-Multi-stage `Dockerfile`: `frontend-build` (node:24-alpine, pnpm build) → `backend-build` (dotnet
-SDK, publishes `FastTTSR.Api` + `FastTTSR.Worker`, copies frontend dist into `wwwroot`) → final
-`mcr.microsoft.com/dotnet/aspnet` runtime image (installs `libespeak-ng1`/`espeak-ng-data`, copies
-published API + worker, sets `WorkerOptions__ExecutablePath=/app/worker/FastTTSR.Worker`,
-`ENTRYPOINT dotnet FastTTSR.Api.dll`). `docker-compose.yml` defines a single `fastttsr` service with
-port mapping, env passthrough, and `./model-cache:/cache` + `./assets:/app/assets:ro` volumes.
+Multi-stage `Dockerfile`, 3 selectable final images sharing a common `runtime-base` stage:
+`docker build --target runtime-tts|runtime-asr|runtime-all -t <tag> .` (omitting `--target` builds
+`runtime-all`, the last/default stage). `backend-build` publishes `FastTTSR.Api`,
+`FastTTSR.Worker`, and `FastTTSR.Worker.Asr` with `-r linux-x64 --self-contained false`.
+`runtime-base` installs `libespeak-ng1`/`espeak-ng-data` (Kokoro) + `libgomp1` (Whisper.net's
+native `ggml-cpu` library needs OpenMP). `runtime-asr`/`runtime-all` additionally set
+`ENV LD_LIBRARY_PATH=/app/runtimes/linux-x64:/app/worker-asr/runtimes/linux-x64` - **required** for
+Whisper.net's native libs to load at all (see "Known fixes" below). `docker-compose.yml` passes
+through `SERVER_MODE` + `AsrWorkerOptions__*` env vars and has commented example services for
+TTS-only/ASR-only deployments using `target: runtime-tts`/`runtime-asr`.
+
+### Known fixes (found while validating Phase 6 against a real packaged image)
+1. **Whisper.net native library load failure** (`"Cannot load the library... PInvokeError:
+   Success"`): `Whisper.net.Runtime` ships native `.so` files under `runtimes/<rid>/` instead of the
+   standard `runtimes/<rid>/native/` layout, so sibling dependencies (`libggml-*.so`) aren't found
+   without help. Fixed via the `LD_LIBRARY_PATH` `ENV` above (installing `libgomp1` alone was
+   necessary but insufficient). Confirmed fixed in both in-process and full worker mode.
+2. **Whisper.net requires exactly 16kHz mono input, no internal resampling**: `WhisperAsrEngine`
+   now calls `WavAudioUtils.ResampleToMono16kWav(wavBytes)` before handing audio to Whisper.net
+   (mirrors what Nemotron's pipeline already did). Without this, any non-16kHz source (e.g. Kokoro
+   at 24kHz, Supertonic at 22050Hz) throws `NotSupportedWaveException`.
 
 ## Frontend (`frontend/`)
 Vue 3 + TypeScript, Composition API, no UI framework/router/state library (deliberately minimal).

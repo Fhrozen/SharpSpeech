@@ -44,6 +44,48 @@ public static class WavAudioUtils
         return sampleRate == targetSampleRate ? mono : Resample(mono, sampleRate, targetSampleRate);
     }
 
+    /// <summary>Re-encodes arbitrary PCM16 WAV bytes as mono 16kHz PCM16 WAV - Whisper.net requires
+    /// exactly 16kHz input and does not resample internally.</summary>
+    public static byte[] ResampleToMono16kWav(byte[] wavBytes)
+    {
+        var samples = ReadMonoFloat(wavBytes, targetSampleRate: 16000);
+        var pcm = new byte[samples.Length * 2];
+
+        for (var i = 0; i < samples.Length; i++)
+        {
+            var value = (short)(Math.Clamp(samples[i], -1f, 1f) * short.MaxValue);
+            var bytes = BitConverter.GetBytes(value);
+            pcm[i * 2] = bytes[0];
+            pcm[i * 2 + 1] = bytes[1];
+        }
+
+        using var stream = new MemoryStream(44 + pcm.Length);
+        using var writer = new BinaryWriter(stream);
+
+        const int sampleRate = 16000;
+        const short channels = 1;
+        const short bitsPerSample = 16;
+        var byteRate = sampleRate * channels * bitsPerSample / 8;
+        var blockAlign = (short)(channels * bitsPerSample / 8);
+
+        writer.Write("RIFF"u8.ToArray());
+        writer.Write(36 + pcm.Length);
+        writer.Write("WAVE"u8.ToArray());
+        writer.Write("fmt "u8.ToArray());
+        writer.Write(16);
+        writer.Write((short)1);
+        writer.Write(channels);
+        writer.Write(sampleRate);
+        writer.Write(byteRate);
+        writer.Write(blockAlign);
+        writer.Write(bitsPerSample);
+        writer.Write("data"u8.ToArray());
+        writer.Write(pcm.Length);
+        writer.Write(pcm);
+
+        return stream.ToArray();
+    }
+
     private static float[] Resample(float[] samples, int fromRate, int toRate)
     {
         if (samples.Length == 0 || fromRate == toRate)

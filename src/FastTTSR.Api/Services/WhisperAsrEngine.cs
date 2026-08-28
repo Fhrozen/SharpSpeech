@@ -24,7 +24,10 @@ public sealed class WhisperAsrEngine : IDisposable
             .WithLanguage(string.IsNullOrWhiteSpace(language) ? "auto" : language);
 
         using var processor = builderFactory.Build();
-        using var audioStream = new MemoryStream(wavBytes);
+
+        // Whisper.net requires exactly 16kHz input and does not resample internally.
+        var resampledWav = WavAudioUtils.ResampleToMono16kWav(wavBytes);
+        using var audioStream = new MemoryStream(resampledWav);
 
         var textBuilder = new StringBuilder();
         string? detectedLanguage = string.IsNullOrWhiteSpace(language) ? null : language;

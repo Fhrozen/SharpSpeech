@@ -108,6 +108,7 @@
         { "relativePath": "joint.onnx.data", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/joint.onnx.data" },
         { "relativePath": "audio_processor_config.json", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/audio_processor_config.json" },
         { "relativePath": "model_config.json", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/model_config.json" },
+        { "relativePath": "genai_config.json", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/genai_config.json" },
         { "relativePath": "tokenizer.json", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/tokenizer.json" },
         { "relativePath": "vocab.txt", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/vocab.txt" },
         { "relativePath": "silero_vad.onnx", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/silero_vad.onnx" }

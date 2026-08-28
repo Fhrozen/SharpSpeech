@@ -233,6 +233,37 @@ far.
 - Not yet wired into DI/endpoints/worker — that lands in Phase 4/5. Native runtime packaging for
   the container (linux-x64) is still an open verification item for Phase 6.
 
+#### Nemotron engine (Phase 3 — done)
+Cache-aware streaming FastConformer-RNNT via raw `Microsoft.ML.OnnxRuntime` (3 chained sessions),
+mirrors `SupertonicTtsEngine`'s multi-session-in-one-class pattern. Exact tensor contract was
+recovered via a throwaway C# spike (`InferenceSession.InputMetadata`/`OutputMetadata`, run with
+`./dotnet.sh run` against the real ONNX graphs) — full details and caveats are in
+[docs/ASR_IMPLEMENTATION_PLAN.md](ASR_IMPLEMENTATION_PLAN.md)'s Phase 3 section, summarized here:
+- **Encoder** (24 layers, hidden=1024): consumes fixed 65-frame log-mel chunks (128 mels; 56 new
+  frames + 9 cached lookback frames), cache-aware via `cache_last_channel`/`cache_last_time`/
+  `cache_last_channel_len` tensors threaded chunk-to-chunk, conditioned by a `lang_id` token that
+  is itself just a vocab index (see below). Emits 7 encoded frames/chunk.
+- **Decoder/predictor** (`Services/NemotronAsrEngine.cs`'s `RunDecoderStep`): LSTM-based (2 layers,
+  hidden=640), not attention-based. Its raw output is (batch, hidden, seq) and must be transposed
+  before the joint step.
+- **Joint** (`RunJoint`): combines one encoder frame + one decoder step, argmax over 13088 vocab
+  entries; RNNT greedy decode loop lives in `RunRnntGreedyDecode` (up to `max_symbols_per_step`
+  emissions per encoder frame, stops on `blank_id`).
+- `Services/NemotronVocabulary.cs`: `vocab.txt` (id-per-line) doubles as both the token→text
+  decoder (SentencePiece `▁` convention) and the language-tag→`lang_id` lookup (e.g. `<en-US>`) —
+  no separate tokenizer file needed.
+- `Services/NemotronFeatureExtractor.cs`: self-contained log-mel spectrogram (own radix-2 FFT +
+  triangular mel filterbank + Hann window), no external DSP library.
+- `Services/WavAudioUtils.cs` gained `ReadMonoFloat(wavBytes, targetSampleRate)` (PCM16 decode +
+  linear-interpolation resample to 16kHz mono) alongside the existing duration helper.
+- `config.json`'s `nemotron-3.5` entry also downloads `genai_config.json` now (read at runtime for
+  `blank_id`/`max_symbols_per_step`, NOT for `Microsoft.ML.OnnxRuntimeGenAI` — that library is
+  intentionally not used).
+- **Open risk**: mel-scale formula (HTK vs Slaney) and frame-centering/dither details aren't fully
+  pinned down by config alone, and there's been no end-to-end test with real weights + real audio
+  yet (only graph-metadata validated) — see the plan doc's caveat before trusting output accuracy.
+- Not yet wired into DI/endpoints/worker — Phase 4/5.
+
 ## Build tooling note
 No local `dotnet` CLI in the dev container — use `./dotnet.sh <args>` (Docker-based wrapper) for
 build/test/publish, e.g. `./dotnet.sh build FastTTSR.slnx`, `./dotnet.sh test tests/FastTTSR.Api.Tests`.

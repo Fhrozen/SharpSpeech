@@ -1,11 +1,11 @@
 namespace FastTTSR.Api.Services;
 
-/// <summary>Minimal WAV (RIFF/PCM) header reader, just enough to compute audio duration for metrics.</summary>
+/// <summary>Minimal WAV (RIFF/PCM) reader/resampler - just enough for ASR input, no external audio library.</summary>
 public static class WavAudioUtils
 {
     public static double GetDurationSeconds(byte[] wavBytes)
     {
-        if (!TryReadHeader(wavBytes, out var sampleRate, out var channels, out var bitsPerSample, out var dataSize) ||
+        if (!TryReadHeader(wavBytes, out var sampleRate, out var channels, out var bitsPerSample, out _, out var dataSize) ||
             sampleRate <= 0 || channels <= 0 || bitsPerSample <= 0)
         {
             return 0;
@@ -16,11 +16,64 @@ public static class WavAudioUtils
         return (double)sampleCount / sampleRate;
     }
 
-    private static bool TryReadHeader(byte[] wav, out int sampleRate, out short channels, out short bitsPerSample, out int dataSize)
+    /// <summary>Decodes 16-bit PCM WAV bytes to mono float samples resampled to <paramref name="targetSampleRate"/>.</summary>
+    public static float[] ReadMonoFloat(byte[] wavBytes, int targetSampleRate)
+    {
+        if (!TryReadHeader(wavBytes, out var sampleRate, out var channels, out var bitsPerSample, out var dataOffset, out var dataSize) ||
+            bitsPerSample != 16)
+        {
+            throw new NotSupportedException("Only 16-bit PCM WAV audio is supported.");
+        }
+
+        var bytesPerSample = bitsPerSample / 8;
+        var frameCount = dataSize / (channels * bytesPerSample);
+        var mono = new float[frameCount];
+
+        for (var i = 0; i < frameCount; i++)
+        {
+            var sum = 0;
+            for (var c = 0; c < channels; c++)
+            {
+                var offset = dataOffset + (i * channels + c) * bytesPerSample;
+                sum += BitConverter.ToInt16(wavBytes, offset);
+            }
+
+            mono[i] = (sum / (float)channels) / 32768f;
+        }
+
+        return sampleRate == targetSampleRate ? mono : Resample(mono, sampleRate, targetSampleRate);
+    }
+
+    private static float[] Resample(float[] samples, int fromRate, int toRate)
+    {
+        if (samples.Length == 0 || fromRate == toRate)
+        {
+            return samples;
+        }
+
+        var outLength = (int)((long)samples.Length * toRate / fromRate);
+        var result = new float[outLength];
+
+        for (var i = 0; i < outLength; i++)
+        {
+            var srcPos = (double)i * fromRate / toRate;
+            var srcIndex = (int)srcPos;
+            var frac = (float)(srcPos - srcIndex);
+
+            var a = samples[Math.Min(srcIndex, samples.Length - 1)];
+            var b = samples[Math.Min(srcIndex + 1, samples.Length - 1)];
+            result[i] = a + (b - a) * frac;
+        }
+
+        return result;
+    }
+
+    private static bool TryReadHeader(byte[] wav, out int sampleRate, out short channels, out short bitsPerSample, out int dataOffset, out int dataSize)
     {
         sampleRate = 0;
         channels = 0;
         bitsPerSample = 0;
+        dataOffset = 0;
         dataSize = 0;
 
         if (wav.Length < 44 || wav[0] != 'R' || wav[1] != 'I' || wav[2] != 'F' || wav[3] != 'F')
@@ -43,6 +96,7 @@ public static class WavAudioUtils
             }
             else if (chunkId == "data")
             {
+                dataOffset = chunkDataStart;
                 dataSize = chunkSize;
             }
 

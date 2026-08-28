@@ -55,8 +55,8 @@
 | -1 | LLM_WIKI bootstrap | ✅ Accepted |
 | 0 | Shared groundwork | ✅ Accepted |
 | 1 | ASR domain model & config plumbing | ✅ Accepted |
-| 2 | Whisper engine | ✅ Done (awaiting acceptance) |
-| 3 | Nemotron engine (spike + implementation) | Not started |
+| 2 | Whisper engine | ✅ Accepted |
+| 3 | Nemotron engine (spike + implementation) | ✅ Done (awaiting acceptance) |
 | 4 | ASR worker process + DI wiring | Not started |
 | 5 | REST endpoints | Not started |
 | 6 | Docker/Compose packaging | Not started |
@@ -172,7 +172,7 @@ engine or wiring anything into `Program.cs`.
 ---
 
 ## Phase 2 — Whisper engine
-**Status**: ✅ Done (awaiting acceptance)
+**Status**: ✅ Accepted
 
 **Inputs**: Phase 1's `AsrModelDefinition`, `IAsrTranscriber`, `IIdleTrackingTranscriber`,
 `AudioTranscriptionRequest`, `TranscriptionResult`.
@@ -212,7 +212,7 @@ correctly included for linux-x64 when `FastTTSR.Worker.Asr` is published inside 
 ---
 
 ## Phase 3 — Nemotron engine (spike + implementation)
-**Status**: Not started
+**Status**: ✅ Done (awaiting acceptance)
 
 **Inputs**: Phase 1's `AsrModelDefinition`/`IAsrTranscriber`/`IIdleTrackingTranscriber`; the
 `nemotron-3.5` asset set downloaded via `IModelCache.EnsureModelAsync(AsrModelDefinition, ct)`
@@ -220,32 +220,85 @@ correctly included for linux-x64 when `FastTTSR.Worker.Asr` is published inside 
 
 **Goal**: a fully working Nemotron-based ASR engine.
 
-**Planned changes**:
-1. **Spike (do first)**: write a small throwaway console/test harness that loads
-   `encoder.onnx`/`decoder.onnx`/`joint.onnx` with `Microsoft.ML.OnnxRuntime.InferenceSession` and
-   logs `InputMetadata`/`OutputMetadata` (names, shapes, types) for each. Read
-   `audio_processor_config.json` and `model_config.json` for feature-extraction and chunk-size
-   parameters. This determines the exact cache-state tensor contract, chunk framing, and how
-   language-ID prompt conditioning is passed in — **expect iteration**; the sub-steps below are
-   provisional until the spike confirms the real contract.
-2. `Services/NemotronAsrEngine.cs`: owns 3 `InferenceSession`s (encoder/decoder/joint) + optional
-   `silero_vad.onnx`, mirrors `SupertonicTtsEngine`'s multi-session-in-one-class pattern.
-   Implements:
-   - Mel-spectrogram feature extraction per `audio_processor_config.json` (small FFT/mel-filterbank
-     helper written in-repo, no external DSP library).
-   - Cache-aware chunked encoder inference (state tensors threaded between chunk calls per spike
-     findings).
-   - RNNT greedy decode loop (`decoder.onnx` predictor + `joint.onnx` combiner) producing token
-     ids.
-   - Tokenizer decode: minimal reader for `tokenizer.json`/`vocab.txt` to map ids → text (custom
-     small decoder, not a full HF tokenizers dependency).
-3. `Services/NemotronAsrTranscriber.cs`: implements `IAsrTranscriber` + `IIdleTrackingTranscriber`.
+**Spike findings (confirmed via a throwaway C# console app using
+`Microsoft.ML.OnnxRuntime.InferenceSession.InputMetadata`/`OutputMetadata`, run through
+`./dotnet.sh run`; the app and downloaded model files were deleted afterward, not committed — only
+the small `.onnx` graph files plus real `decoder.onnx.data`/`joint.onnx.data` and a sparse
+zero-filled placeholder for the 690MB `encoder.onnx.data` were needed, since ONNX Runtime requires
+*a* file to be present at the external-data path but does not validate its contents just to report
+graph metadata):**
 
-**Expected output files**:
-- `src/FastTTSR.Api/Services/NemotronAsrEngine.cs` (new)
-- `src/FastTTSR.Api/Services/NemotronAsrTranscriber.cs` (new)
-- Possibly `src/FastTTSR.Api/Services/NemotronTokenizer.cs` and a mel-spectrogram helper (exact
-  file split TBD until the spike completes)
+- **Encoder** (`encoder.onnx`) — cache-aware streaming FastConformer, 24 layers, hidden=1024:
+  - Inputs: `audio_signal` float32 `[1,65,128]` (batch, frames, mel_bins — one chunk of log-mel
+    features), `length` int64 `[1]`, `cache_last_channel` float32 `[1,24,56,1024]`,
+    `cache_last_time` float32 `[1,24,1024,8]`, `cache_last_channel_len` int64 `[1]`, `lang_id`
+    int64 `[1]`.
+  - Outputs: `outputs` float32 `[1,7,1024]` (7 encoded frames per 65-frame input chunk — matches
+    `subsampling_factor=8`: 56 new frames/8≈7), `encoded_lengths` int64 `[1]`,
+    `cache_last_channel_next`/`cache_last_time_next`/`cache_last_channel_len_next` (same shapes as
+    the `cache_*` inputs — fed back in as next chunk's cache state).
+  - `65 = 56 + 9`: 56 new hop-windows per chunk (`chunk_samples=8960` / `hop_length=160`) plus
+    `pre_encode_cache_size=9` frames of look-back carried from the previous chunk.
+- **Decoder/predictor** (`decoder.onnx`) — **LSTM-based**, not attention-based, 2 layers,
+  hidden=640:
+  - Inputs: `targets` int64 `[-1,-1]` (batch, previously-emitted tokens), `h_in`/`c_in` float32
+    `[2,-1,640]`.
+  - Outputs: `decoder_output` float32 `[-1,640,-1]` — **note the (batch, hidden, seq) channel-first
+    layout**, `h_out`/`c_out` float32 `[2,-1,640]`.
+- **Joint** (`joint.onnx`):
+  - Inputs: `encoder_output` float32 `[-1,-1,1024]` (batch, T, hidden — matches encoder `outputs`
+    directly, no transpose needed), `decoder_output` float32 `[-1,-1,640]` (batch, U, hidden —
+    **decoder.onnx's raw output must be transposed from (B,640,U) to (B,U,640) before feeding
+    here**).
+  - Output: `joint_output` float32 `[-1,-1,-1,13088]` (batch, T, U, vocab).
+- `vocab.txt` (already an asset) is a plain id→piece list, one UTF-8 piece per line, 13088 lines
+  (0-indexed, matches `vocab_size`/`blank_id=13087` exactly — last line is literally `<blank>`).
+  Pieces use SentencePiece `▁` (U+2581) word-boundary prefix convention. It also contains language
+  tag tokens (e.g. `<bg-BG>`) — these double as the `lang_id` encoder input (looked up by scanning
+  vocab for a `<xx-XX>`-shaped line matching the requested language), so **no separate language-id
+  table or `tokenizer.json` parsing is needed** — `vocab.txt` alone is sufficient for both token
+  decoding and language conditioning.
+- Confirmed from `genai_config.json` (already read, not re-derived): `blank_id=13087`,
+  `max_symbols_per_step=10`, `chunk_samples=8960` (560ms @16kHz), and the mel params mirrored in
+  `audio_processor_config.json` (`n_mels=128`, `fft_size=512`, `hop_length=160`, `win_length=400`,
+  `preemph=0.97`, `sample_rate=16000`).
+- **Known accuracy caveat (unverified without real end-to-end audio testing)**: the mel-scale
+  formula (HTK vs Slaney), frame-centering/padding mode, and `dither` are not fully pinned down by
+  the config alone — implemented with reasonable standard defaults (HTK mel scale, zero-pad
+  centering, dither skipped). May need tuning once real transcription output can be checked against
+  ground truth.
+
+**Planned changes (revised after spike)**:
+1. `Services/NemotronVocabulary.cs`: loads `vocab.txt` (id→piece list), decodes token id sequences
+   to text (SentencePiece `▁`→space convention, skips `<...>` control/language tags), and resolves
+   a language code to its `lang_id` vocab index by scanning for a matching `<xx-XX>` tag.
+2. `Services/NemotronFeatureExtractor.cs`: log-mel spectrogram (FFT + Hann window + mel filterbank)
+   per `audio_processor_config.json` params — no external DSP library.
+3. `Services/NemotronAsrEngine.cs`: owns 3 `InferenceSession`s (encoder/decoder/joint), mirrors
+   `SupertonicTtsEngine`'s multi-session-in-one-class pattern. Implements the chunked cache-aware
+   encoder loop (65-frame windows, cache state threaded between chunks) and the RNNT greedy decode
+   loop (LSTM predictor + joint combiner, up to `max_symbols_per_step` emissions per encoder frame,
+   stopping on `blank_id`), using the two helpers above.
+4. `Services/NemotronAsrTranscriber.cs`: implements `IAsrTranscriber` + `IIdleTrackingTranscriber`,
+   pools `NemotronAsrEngine` per model+directory (same pattern as `WhisperAsrTranscriber`).
+
+**Actual output files**:
+- `src/FastTTSR.Api/Services/NemotronVocabulary.cs` (created)
+- `src/FastTTSR.Api/Services/NemotronFeatureExtractor.cs` (created)
+- `src/FastTTSR.Api/Services/NemotronAsrEngine.cs` (created)
+- `src/FastTTSR.Api/Services/NemotronAsrTranscriber.cs` (created)
+- `src/FastTTSR.Api/Services/WavAudioUtils.cs` (modified: added `ReadMonoFloat`/resampling, and
+  `TryReadHeader` now also returns the data chunk offset)
+- `src/FastTTSR.Api/config.json` (modified: added `genai_config.json` as a `nemotron-3.5` asset)
+- `src/FastTTSR.Api/Services/AsrModelCatalog.cs` (modified: same, in the hardcoded defaults)
+
+**Verification**: `./dotnet.sh build FastTTSR.slnx` → 0 errors. The spike (encoder/decoder/joint
+graph metadata) was validated by actually loading the real ONNX graphs via a throwaway C# console
+app (`./dotnet.sh run`), not just read from docs — see spike findings above. **Not yet validated**:
+an actual end-to-end transcription with real model weights and real audio (the ~800MB asset
+download + a real test recording were out of scope for this turn) — numerical correctness of the
+mel/RNNT pipeline remains an open risk until that's done, consistent with the accepted
+"spike + iterate" risk. Not yet wired into DI/endpoints/worker (Phase 4/5).
 
 **Fallback if raw-ORT approach proves infeasible mid-spike**: `Microsoft.ML.OnnxRuntimeGenAI` using
 the model's provided `genai_config.json` (adds one dependency scoped to `Worker.Asr`/`Api`) — only

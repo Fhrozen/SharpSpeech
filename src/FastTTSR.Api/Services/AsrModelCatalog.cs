@@ -86,6 +86,7 @@ public sealed class AsrModelCatalog : IAsrModelCatalog
                 new ModelAsset { RelativePath = "joint.onnx.data", Url = "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/joint.onnx.data" },
                 new ModelAsset { RelativePath = "audio_processor_config.json", Url = "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/audio_processor_config.json" },
                 new ModelAsset { RelativePath = "model_config.json", Url = "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/model_config.json" },
+                new ModelAsset { RelativePath = "genai_config.json", Url = "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/genai_config.json" },
                 new ModelAsset { RelativePath = "tokenizer.json", Url = "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/tokenizer.json" },
                 new ModelAsset { RelativePath = "vocab.txt", Url = "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/vocab.txt" },
                 new ModelAsset { RelativePath = "silero_vad.onnx", Url = "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/silero_vad.onnx" }

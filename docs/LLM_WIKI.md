@@ -164,20 +164,37 @@ TTS-only/ASR-only deployments using `target: runtime-tts`/`runtime-asr`.
 
 ## Frontend (`frontend/`)
 Vue 3 + TypeScript, Composition API, no UI framework/router/state library (deliberately minimal).
-- `App.vue`: fetches `GET /api/models` once on mount, holds form state (`model`, `speaker`,
-  `language`, `speed`, `input`, `quality`) in a `reactive()`, calls `POST /v1/audio/speech` via
-  plain `fetch()`, reads metrics from response headers.
-- Components: `ModelSelector` (dropdown), `LanguageSelector`/`SpeakerSelector` (clickable tag
-  lists), `TextInput` (contenteditable + presets), `ParameterControls` (speed/quality sliders +
-  generate button), `AudioPlayer` (playback + metrics + download), `StatusMessage` (alert banner),
-  `AppHeader`.
+- `App.vue`: on mount, fetches `GET /api/server-info` first (`{ ttsEnabled, asrEnabled }`); sets
+  `activeTab` to whichever is enabled (defaults to `'tts'` if both, `'asr'` if only ASR). Then
+  conditionally fetches `GET /api/models` (if `ttsEnabled`) and/or `GET /api/asr-models` (if
+  `asrEnabled`). A `.tab-switcher` (two buttons, gold-accent active underline) is rendered only
+  when both flags are true; otherwise the single enabled panel shows directly with no tabs.
+  - TTS panel (unchanged): form state (`model`, `speaker`, `language`, `speed`, `input`,
+    `quality`) in a `reactive()`, calls `POST /v1/audio/speech` via plain `fetch()`, reads metrics
+    from response headers.
+  - ASR panel (new): `asrForm` reactive (`model`, `language`, `file: File | null`); `transcribe()`
+    builds a `FormData` (`file`, `model`, optional `language`) and `POST`s to
+    `/v1/audio/transcriptions`; reads `X-Processing-Time`/`X-RTF`/`X-Audio-Duration`/
+    `X-Character-Count` response headers into `transcriptionMetrics`, and the JSON body's `text`
+    field into `transcriptionText`.
+- Components: `ModelSelector` (dropdown - prop type loosened to a structural
+  `{ name, displayName }[]` so it's reused for both `TtsModel[]` and `AsrModel[]`),
+  `LanguageSelector`/`SpeakerSelector` (clickable tag lists, `LanguageSelector` reused for ASR
+  models' `supportedLanguages`), `TextInput` (contenteditable + presets), `ParameterControls`
+  (speed/quality sliders + generate button, TTS-only), `AudioPlayer` (playback + metrics +
+  download, TTS-only), `AudioFileInput` (new: `accept="audio/*"` file picker, `v-model="File |
+  null"`, ASR-only), `TranscriptionResult` (new: copyable text block + metrics row, reuses
+  `AudioPlayer`'s `.audio-result-metrics`/`.metric`/`.metric-value`/`.metric-label` CSS class
+  names for visual consistency since Vue scoped styles don't cascade cross-component),
+  `StatusMessage` (alert banner, one instance per tab), `AppHeader`.
 - `types.ts`: `TtsModel`, `SpeakerMetadata`, `SynthesisRequest`, `SynthesisMetrics`, `TextPreset`,
-  `StatusType`.
+  `StatusType`, `AsrModel` (`name`, `displayName`, `description`, `supportedLanguages`,
+  `supportsLanguageAutoDetect`), `TranscriptionMetrics` (`processingTime`, `rtf`, `audioDuration`,
+  `characterCount`), `ServerInfo` (`ttsEnabled`, `asrEnabled`).
 - `vite.config.js` proxies `/api/*` and `/v1/*` to the backend in dev. Build: `vue-tsc && vite
   build` → `dist/`, copied into the API's `wwwroot` at Docker build time.
-- Capability discovery today is implicit: the app just calls `/api/models` and renders whatever
-  comes back. (When ASR ships, a `GET /api/server-info` endpoint will drive which UI
-  sections/tabs are shown — see ASR section once implemented.)
+- Capability discovery: `GET /api/server-info` drives which panel(s)/tabs are shown; each panel's
+  model list still comes from its own `/api/models` or `/api/asr-models` call.
 
 ## Testing
 - `tests/FastTTSR.Api.Tests`: unit tests (`ModelCatalogTests`, `KokoroMetadataTests`,
@@ -186,6 +203,30 @@ Vue 3 + TypeScript, Composition API, no UI framework/router/state library (delib
   `ModelHealthTests`, `JapaneseConcurrencyTests`).
 - Run: `dotnet test tests/FastTTSR.Api.Tests`, or `./tests/run-tests.sh all` /
   `docker compose -f docker-compose.test.yml up --abort-on-container-exit` for integration.
+- Frontend: `cd frontend && pnpm install && pnpm run build` (runs `vue-tsc --noEmit` then `vite
+  build`); no pnpm preinstalled in the dev container - install via `npm install -g pnpm` first.
+
+### Circular TTS->ASR model tests (opt-in, real models, not run in CI)
+`tests/FastTTSR.Api.IntegrationTests/AsrCircularTests.cs` synthesizes real audio via Supertonic-3
+(`test_text.md` corpus - short/long samples + a long multi-speaker conversation script) and feeds
+it into Whisper/Nemotron via the real HTTP endpoints, checking transcription quality (word error
+rate) and crash-resistance on long multi-chunk audio. **Opt-in only**: gated by
+`AsrModelTestGate`/`ASR_MODEL_TESTS=1` env var (via `Xunit.SkippableFact`, shows as Skipped by
+default - zero cost, no downloads, when not enabled) and tagged `[Trait("Category",
+"AsrModelTests")]`; CI's `ci-tests.yml` explicitly excludes this category. Run locally with
+`ASR_MODEL_TESTS=1 dotnet test ... --filter "Category=AsrModelTests"` or `./tests/run-tests.sh
+asr-model-tests`. See `docs/ASR_IMPLEMENTATION_PLAN.md` Phase 8 for full design notes, including a
+real concurrency bug this suite found and fixed in `ModelCache` (see below).
+
+### Known bug fixed: ModelCache concurrent-download race
+`ModelCache.EnsureModelAsync` (both Tts/Asr overloads) now serializes per-model downloads via a
+`ConcurrentDictionary<string, SemaphoreSlim>` keyed by model name. Previously, a background
+warmup service (`ModelWarmupService`/`AsrModelWarmupService`) racing an on-demand request for the
+same not-yet-cached model could write the same asset file concurrently, corrupting it / causing
+intermittent 500s - this affected TTS models too, not just ASR, it just hadn't been exercised
+before the circular ASR tests were added.
+
+## Extension points
 
 ### Circular TTS->ASR model tests (opt-in, real models, not run in CI)
 `tests/FastTTSR.Api.IntegrationTests/AsrCircularTests.cs` synthesizes real audio via Supertonic-3

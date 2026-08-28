@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import type { TtsModel, SynthesisRequest, SynthesisMetrics, TextPreset, StatusType } from './types'
+import type { TtsModel, SynthesisRequest, SynthesisMetrics, TextPreset, StatusType, AsrModel, TranscriptionMetrics, ServerInfo } from './types'
 import { presetTexts } from './preset-texts'
 
 import AppHeader from './components/AppHeader.vue'
@@ -10,7 +10,12 @@ import LanguageSelector from './components/LanguageSelector.vue'
 import TextInput from './components/TextInput.vue'
 import ParameterControls from './components/ParameterControls.vue'
 import AudioPlayer from './components/AudioPlayer.vue'
+import AudioFileInput from './components/AudioFileInput.vue'
+import TranscriptionResult from './components/TranscriptionResult.vue'
 import StatusMessage from './components/StatusMessage.vue'
+
+const serverInfo = ref<ServerInfo>({ ttsEnabled: true, asrEnabled: false })
+const activeTab = ref<'tts' | 'asr'>('tts')
 
 const models = ref<TtsModel[]>([])
 const audioUrl = ref<string | null>(null)
@@ -187,8 +192,143 @@ function downloadAudio() {
   document.body.removeChild(a)
 }
 
+// --- ASR (Speech to Text) ---
+
+const asrModels = ref<AsrModel[]>([])
+const asrForm = reactive({
+  model: '',
+  language: '',
+  file: null as File | null
+})
+const transcriptionText = ref<string | null>(null)
+const asrLoading = ref(false)
+const asrError = ref('')
+const asrStatusMessage = ref('')
+const asrStatusTitle = ref('')
+const asrStatusClass = ref<StatusType>('')
+
+const transcriptionMetrics = ref<TranscriptionMetrics>({
+  processingTime: '0.00s',
+  rtf: '0.000x',
+  audioDuration: '0.00s',
+  characterCount: '0'
+})
+
+const selectedAsrModel = computed(() =>
+  asrModels.value.find(m => m.name === asrForm.model)
+)
+
+const canTranscribe = computed(() =>
+  asrForm.file !== null && !asrLoading.value
+)
+
+function updateAsrStatus(type: StatusType, title: string, message: string) {
+  asrStatusClass.value = type
+  asrStatusTitle.value = title
+  asrStatusMessage.value = message
+}
+
+function syncAsrModelDefaults() {
+  const model = selectedAsrModel.value
+  if (!model) return
+
+  if (model.supportedLanguages.length > 0 && !model.supportedLanguages.includes(asrForm.language)) {
+    asrForm.language = ''
+  }
+}
+
+async function loadServerInfo() {
+  try {
+    const response = await fetch('/api/server-info')
+    if (response.ok) {
+      serverInfo.value = await response.json()
+    }
+  } catch (err) {
+    // Assume TTS-only (the pre-ASR default) if the endpoint can't be reached.
+  }
+
+  activeTab.value = serverInfo.value.ttsEnabled ? 'tts' : 'asr'
+}
+
+async function loadAsrModels() {
+  try {
+    const response = await fetch('/api/asr-models')
+    if (!response.ok) {
+      throw new Error('Failed to fetch ASR models')
+    }
+
+    const data = await response.json()
+    asrModels.value = data
+
+    if (data.length > 0) {
+      asrForm.model = data[0].name
+      syncAsrModelDefaults()
+    }
+  } catch (err) {
+    updateAsrStatus('error', 'Error', 'Failed to load ASR models')
+    asrError.value = (err as Error).message
+  }
+}
+
+async function transcribe() {
+  if (!asrForm.file) return
+
+  asrLoading.value = true
+  asrError.value = ''
+  transcriptionText.value = null
+
+  updateAsrStatus('loading', 'Transcribing', 'Transcribing audio...')
+
+  try {
+    const payload = new FormData()
+    payload.append('file', asrForm.file)
+    payload.append('model', asrForm.model)
+    if (asrForm.language) {
+      payload.append('language', asrForm.language)
+    }
+
+    const response = await fetch('/v1/audio/transcriptions', {
+      method: 'POST',
+      body: payload
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.message || 'Request failed')
+    }
+
+    transcriptionMetrics.value = {
+      processingTime: `${response.headers.get('X-Processing-Time') || '0.00'}s`,
+      rtf: `${response.headers.get('X-RTF') || '0.000'}x`,
+      audioDuration: `${response.headers.get('X-Audio-Duration') || '0.00'}s`,
+      characterCount: response.headers.get('X-Character-Count') || '0'
+    }
+
+    const data = await response.json()
+    transcriptionText.value = data.text || ''
+
+    updateAsrStatus('success', 'Complete', 'Transcription complete!')
+    setTimeout(() => {
+      asrStatusMessage.value = ''
+    }, 3000)
+  } catch (err) {
+    asrError.value = (err as Error).message
+    updateAsrStatus('error', 'Error', (err as Error).message)
+  } finally {
+    asrLoading.value = false
+  }
+}
+
 onMounted(async () => {
-  await loadModels()
+  await loadServerInfo()
+
+  if (serverInfo.value.ttsEnabled) {
+    await loadModels()
+  }
+
+  if (serverInfo.value.asrEnabled) {
+    await loadAsrModels()
+  }
 })
 </script>
 
@@ -198,58 +338,124 @@ onMounted(async () => {
       <div class="demo-content">
         <AppHeader title="FastTTSR" subtitle="Multi-Model Text-to-Speech System" />
 
-        <div class="demo-controls">
-          <ModelSelector v-model="form.model" :models="models" @update:model-value="syncModelDefaults" />
-          
-          <SpeakerSelector 
-            v-if="selectedModel?.speakers && selectedModel.speakers.length > 0"
-            v-model="form.speaker" 
-            :speakers="selectedModel.speakers"
-            :speaker-metadata="selectedModel.speakerMetadata"
-          />
-          
-          <LanguageSelector 
-            v-if="selectedModel?.supportedLanguages && selectedModel.supportedLanguages.length > 0"
-            v-model="form.language" 
-            :languages="selectedModel.supportedLanguages" 
-          />
-
-          <TextInput 
-            v-model="form.input" 
-            :presets="presets" 
-            :min-char-count="minCharCount" 
-          />
+        <div v-if="serverInfo.ttsEnabled && serverInfo.asrEnabled" class="tab-switcher">
+          <button
+            class="tab-btn"
+            :class="{ active: activeTab === 'tts' }"
+            @click="activeTab = 'tts'"
+          >
+            Text to Speech
+          </button>
+          <button
+            class="tab-btn"
+            :class="{ active: activeTab === 'asr' }"
+            @click="activeTab = 'asr'"
+          >
+            Speech to Text
+          </button>
         </div>
 
-        <ParameterControls
-          v-model:speed="form.speed"
-          v-model:quality="form.quality"
-          :show-quality="modelSupportsQuality"
-          :speed-min="speedRange.min"
-          :speed-max="speedRange.max"
-          :loading="loading"
-          :can-generate="canGenerate"
-          @generate="synthesize"
-        />
+        <template v-if="serverInfo.ttsEnabled">
+          <div v-show="activeTab === 'tts'" class="tab-panel">
+            <div class="demo-controls">
+              <ModelSelector v-model="form.model" :models="models" @update:model-value="syncModelDefaults" />
 
-        <div class="demo-results">
-          <AudioPlayer 
-            :audio-url="audioUrl" 
-            :metrics="metrics"
-            :loading="loading"
-            @download="downloadAudio" 
-          />
-        </div>
+              <SpeakerSelector
+                v-if="selectedModel?.speakers && selectedModel.speakers.length > 0"
+                v-model="form.speaker"
+                :speakers="selectedModel.speakers"
+                :speaker-metadata="selectedModel.speakerMetadata"
+              />
 
-        <StatusMessage 
-          :message="statusMessage" 
-          :title="statusTitle" 
-          :type="statusClass" 
-        />
+              <LanguageSelector
+                v-if="selectedModel?.supportedLanguages && selectedModel.supportedLanguages.length > 0"
+                v-model="form.language"
+                :languages="selectedModel.supportedLanguages"
+              />
 
-        <div v-if="error" class="demo-error">
-          {{ error }}
-        </div>
+              <TextInput
+                v-model="form.input"
+                :presets="presets"
+                :min-char-count="minCharCount"
+              />
+            </div>
+
+            <ParameterControls
+              v-model:speed="form.speed"
+              v-model:quality="form.quality"
+              :show-quality="modelSupportsQuality"
+              :speed-min="speedRange.min"
+              :speed-max="speedRange.max"
+              :loading="loading"
+              :can-generate="canGenerate"
+              @generate="synthesize"
+            />
+
+            <div class="demo-results">
+              <AudioPlayer
+                :audio-url="audioUrl"
+                :metrics="metrics"
+                :loading="loading"
+                @download="downloadAudio"
+              />
+            </div>
+
+            <StatusMessage
+              :message="statusMessage"
+              :title="statusTitle"
+              :type="statusClass"
+            />
+
+            <div v-if="error" class="demo-error">
+              {{ error }}
+            </div>
+          </div>
+        </template>
+
+        <template v-if="serverInfo.asrEnabled">
+          <div v-show="activeTab === 'asr'" class="tab-panel">
+            <div class="demo-controls">
+              <ModelSelector v-model="asrForm.model" :models="asrModels" @update:model-value="syncAsrModelDefaults" />
+
+              <LanguageSelector
+                v-if="selectedAsrModel?.supportedLanguages && selectedAsrModel.supportedLanguages.length > 0"
+                v-model="asrForm.language"
+                :languages="selectedAsrModel.supportedLanguages"
+              />
+
+              <AudioFileInput v-model="asrForm.file" />
+            </div>
+
+            <div class="demo-output-section">
+              <button
+                class="demo-generate-btn"
+                :disabled="!canTranscribe"
+                @click="transcribe"
+              >
+                <span class="icon">🎙️</span>
+                <span class="text">{{ asrLoading ? 'Transcribing...' : 'Transcribe' }}</span>
+              </button>
+            </div>
+
+            <div class="demo-results">
+              <TranscriptionResult
+                :text="transcriptionText"
+                :metrics="transcriptionMetrics"
+                :loading="asrLoading"
+              />
+            </div>
+
+            <StatusMessage
+              :message="asrStatusMessage"
+              :title="asrStatusTitle"
+              :type="asrStatusClass"
+            />
+
+            <div v-if="asrError" class="demo-error">
+              {{ asrError }}
+            </div>
+          </div>
+        </template>
       </div>
     </div>
   </main>
@@ -292,6 +498,69 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+}
+
+.tab-switcher {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 1px solid #333333;
+}
+
+.tab-btn {
+  background: transparent;
+  color: #888888;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.tab-btn:hover {
+  color: #ffffff;
+}
+
+.tab-btn.active {
+  color: #fbbf24;
+  border-bottom-color: #fbbf24;
+}
+
+.tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.demo-output-section {
+  display: flex;
+  justify-content: center;
+}
+
+.demo-generate-btn {
+  background: transparent;
+  color: #fbbf24;
+  border: 2px solid #fbbf24;
+  padding: 0.75rem 1.75rem;
+  border-radius: 0.25rem;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+.demo-generate-btn:hover:not(:disabled) {
+  background: rgba(251, 191, 36, 0.1);
+  transform: translateY(-1px);
+}
+
+.demo-generate-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .demo-controls {

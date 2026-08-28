@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import type { TtsModel } from '../types'
-
+// Structurally compatible with both TtsModel and AsrModel - only name/displayName are used here.
 defineProps<{
-  models: TtsModel[]
+  models: { name: string; displayName: string }[]
   modelValue: string
 }>()
 

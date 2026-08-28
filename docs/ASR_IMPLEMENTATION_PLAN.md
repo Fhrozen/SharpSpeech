@@ -59,8 +59,8 @@
 | 3 | Nemotron engine (spike + implementation) | ✅ Accepted |
 | 4 | ASR worker process + DI wiring | ✅ Accepted |
 | 5 | REST endpoints | ✅ Accepted |
-| 6 | Docker/Compose packaging | ✅ Done (awaiting acceptance) |
-| 7 | Frontend ASR UI | Not started |
+| 6 | Docker/Compose packaging | ✅ Accepted |
+| 7 | Frontend ASR UI | ✅ Done (awaiting acceptance) |
 | 8 | Tests | 🚧 In progress (circular tests done) |
 | 9 | Documentation update (final) | Not started |
 
@@ -471,7 +471,7 @@ only compile-time/DI-graph correctness has been verified this phase.
 ---
 
 ## Phase 6 — Docker/Compose packaging
-**Status**: ✅ Done (awaiting acceptance)
+**Status**: ✅ Accepted
 
 **Inputs**: Phase 4 producing both worker executables (`FastTTSR.Worker`, `FastTTSR.Worker.Asr`).
 
@@ -548,7 +548,7 @@ runtime-all`, both in-process AND full worker mode):
 ---
 
 ## Phase 7 — Frontend ASR UI
-**Status**: Not started
+**Status**: ✅ Done (awaiting acceptance)
 
 **Inputs**: Phase 5's endpoint contracts (`/api/server-info`, `/api/asr-models`,
 `/v1/audio/transcriptions`).
@@ -564,13 +564,34 @@ runtime-all`, both in-process AND full worker mode):
 5. Reuse `ModelSelector.vue`/`LanguageSelector.vue`; call `POST /v1/audio/transcriptions` via
    `fetch` with `FormData`.
 
-**Expected output files**:
-- `frontend/src/types.ts` (modified)
-- `frontend/src/App.vue` (modified)
-- `frontend/src/components/AudioFileInput.vue` (new)
-- `frontend/src/components/TranscriptionResult.vue` (new)
+**Actual output files**:
+- `frontend/src/types.ts` (modified: added `AsrModel`, `TranscriptionMetrics`, `ServerInfo`)
+- `frontend/src/components/ModelSelector.vue` (modified: `models` prop loosened to a structural
+  `{ name, displayName }[]` type so it can be reused for both `TtsModel[]` and `AsrModel[]`)
+- `frontend/src/components/AudioFileInput.vue` (new: styled file picker, emits `update:modelValue`)
+- `frontend/src/components/TranscriptionResult.vue` (new: metrics row + copyable text block,
+  reuses `AudioPlayer`'s metric CSS class names for visual consistency)
+- `frontend/src/App.vue` (modified: fetches `/api/server-info` on mount and sets `activeTab`
+  accordingly; tab switcher rendered only when both `ttsEnabled`/`asrEnabled`; new ASR panel wired
+  to `asrForm` state, `loadAsrModels()`, and `transcribe()` which POSTs `FormData` to
+  `/v1/audio/transcriptions` and reads `X-Processing-Time`/`X-RTF`/`X-Audio-Duration`/
+  `X-Character-Count` response headers into `transcriptionMetrics`; added `.tab-switcher`/
+  `.tab-btn`/`.tab-panel`/`.demo-generate-btn` global styles matching the existing dark theme)
+- `frontend/pnpm-lock.yaml` (regenerated: pre-existing drift where `package.json` already listed
+  `typescript`/`vue-tsc` devDependencies not reflected in the lockfile; refreshed while installing
+  to run the build/type-check below, unrelated to the ASR feature itself)
+
+**Verification performed**:
+- `pnpm install` (via `npm install -g pnpm`, no local pnpm previously) succeeded.
+- `npx vue-tsc --noEmit` — zero type errors.
+- `pnpm run build` (`vue-tsc && vite build`) — succeeded, 43 modules transformed, output bundle
+  produced (`dist/assets/index-*.js` ~100kB, `dist/assets/index-*.css` ~14kB).
+- Not yet tested against a live backend with `SERVER_MODE=both`/`asr` (no browser/manual smoke
+  test performed this phase) — build/type-check only.
 
 ---
+
+
 
 ## Phase 8 — Tests
 **Status**: 🚧 In progress (circular TTS->ASR model tests implemented ahead of schedule, between

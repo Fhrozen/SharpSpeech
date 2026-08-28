@@ -39,3 +39,23 @@ export interface TextPreset {
 }
 
 export type StatusType = 'loading' | 'success' | 'error' | ''
+
+export interface AsrModel {
+  name: string
+  displayName: string
+  description: string
+  supportedLanguages: string[]
+  supportsLanguageAutoDetect: boolean
+}
+
+export interface TranscriptionMetrics {
+  processingTime: string
+  rtf: string
+  audioDuration: string
+  characterCount: string
+}
+
+export interface ServerInfo {
+  ttsEnabled: boolean
+  asrEnabled: boolean
+}

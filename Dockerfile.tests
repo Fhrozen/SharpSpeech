@@ -1,9 +1,9 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0-preview AS build
 WORKDIR /src
 
-# Install espeak-ng native library for Kokoro TTS
+# Install espeak-ng (Kokoro TTS) and libgomp1 (Whisper.net's native ggml-cpu library needs OpenMP)
 RUN apt-get update && \
-    apt-get install -y libespeak-ng1 espeak-ng-data && \
+    apt-get install -y libespeak-ng1 espeak-ng-data libgomp1 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

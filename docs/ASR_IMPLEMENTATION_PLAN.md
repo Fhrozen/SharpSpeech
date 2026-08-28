@@ -61,7 +61,7 @@
 | 5 | REST endpoints | ✅ Done (awaiting acceptance) |
 | 6 | Docker/Compose packaging | Not started |
 | 7 | Frontend ASR UI | Not started |
-| 8 | Tests | Not started |
+| 8 | Tests | 🚧 In progress (circular tests done) |
 | 9 | Documentation update (final) | Not started |
 
 ---
@@ -522,7 +522,8 @@ only compile-time/DI-graph correctness has been verified this phase.
 ---
 
 ## Phase 8 — Tests
-**Status**: Not started
+**Status**: 🚧 In progress (circular TTS->ASR model tests implemented ahead of schedule, between
+Phase 5 and Phase 6, at the user's request; unit-test-level coverage below is still pending)
 
 **Inputs**: functioning engines (Phase 2/3), endpoints (Phase 5).
 
@@ -534,11 +535,91 @@ only compile-time/DI-graph correctness has been verified this phase.
    model, assert 200 + non-empty text; add a Nemotron case once Phase 3 is confirmed working.
 4. Extend `ModelHealthTests.cs` pattern for `/api/server-info`.
 
-**Expected output files**:
+**Expected output files** (still pending):
 - `tests/FastTTSR.Api.Tests/AsrModelCatalogTests.cs` (new)
 - `tests/FastTTSR.Api.Tests/AsrTranscriberRouterTests.cs` (new)
-- `tests/FastTTSR.Api.IntegrationTests/SpeechTranscriptionTests.cs` (new)
 - `tests/FastTTSR.Api.IntegrationTests/ModelHealthTests.cs` (modified)
+
+### Circular TTS->ASR model tests (done, implemented ahead of schedule)
+
+**Goal**: real end-to-end evaluation - synthesize real audio via Supertonic-3 (multiple preset
+speakers), feed it into Whisper/Nemotron, and check transcription quality - as an opt-in suite that
+never runs in CI (downloads real multi-hundred-MB-to-GB models and runs real inference).
+
+**Design**:
+- `tests/FastTTSR.Api.IntegrationTests/TestData/test_text.md`: human-readable corpus - 3 short
+  (2-5 sentence) samples, 2 long (~150-250 word) paragraph samples, and 1 long ~20-turn
+  conversation script (alternating speakers F1/M2), each tagged with `## <id> (type: ..., speaker:
+  ...)` headings. The conversation is used for the "streaming" test: concatenating many
+  independently-synthesized turns into one long, multi-minute, multi-chunk audio stresses
+  Nemotron's cache-aware chunk-to-chunk decoding far more than a single short clip does (there is
+  no separate incremental/streaming HTTP API yet - both engines currently only expose whole-file
+  batch transcription - so "streaming" here means exercising the *engine's internal* chunked
+  cache-threading logic across many consecutive chunks via one long audio file, not a new
+  incremental request API).
+- `Support/AsrTestCorpus.cs`: parses `test_text.md` into `AsrTestSample`/`AsrConversationSample`
+  records (simple regex-based heading/turn parsing, no markdown library).
+- `Support/WordErrorRate.cs`: small self-contained word-level edit-distance (WER) calculator (no
+  external NLP library).
+- `Support/WavTestUtils.cs`: concatenates several PCM16 WAV clips (with a short silence gap) into
+  one long WAV, for building the conversation audio from individually-synthesized turns.
+- `Support/AsrModelTestGate.cs`: opt-in gate - `AsrModelTestGate.IsEnabled` reads env var
+  `ASR_MODEL_TESTS=1`/`true`.
+- `AsrCircularTests.cs` (`[Trait("Category", "AsrModelTests")]`, uses `Xunit.SkippableFact`'s
+  `[SkippableTheory]`/`Skip.IfNot(...)` so tests show as **Skipped** - not silently passed or
+  failed - when not opted in): each test builds its own `WebApplicationFactory<Program>` (only
+  *after* the skip check passes, so nothing expensive happens when skipped) with
+  `SERVER_MODE=both`, `WorkerOptions__Enabled=false`, `AsrWorkerOptions__Enabled=false` (in-process
+  mode - avoids needing separately-built worker executables reachable on disk).
+  - `Offline_TextSample_TranscribesToReasonablyMatchingText` (Theory, every short/long sample ×
+    {whisper-base, nemotron-3.5}): synthesizes via `POST /v1/audio/speech` (model=supertonic-3),
+    transcribes via `POST /v1/audio/transcriptions`, asserts non-empty transcript and WER ≤ 0.9.
+  - `Streaming_LongConversation_TranscribesWithoutCrashingAndProducesText` (Theory over both ASR
+    models): synthesizes every conversation turn individually (different speaker per turn),
+    concatenates into one long WAV via `WavTestUtils`, transcribes once, asserts non-empty
+    transcript with a plausible word count (not a strict WER, since the point is surviving many
+    chunks without crashing/degenerating, not exact accuracy).
+
+**A real bug was found and fixed while validating this**: `ModelCache.EnsureModelAsync` had no
+per-model locking, so a cold-cache run raced the background `AsrModelWarmupService` download
+against the on-demand download triggered by the test's own HTTP request - both writing the same
+asset files concurrently - causing an intermittent 500 (this affected TTS models too, not just ASR,
+it just hadn't been hit before). **Fixed**: `ModelCache` now uses a per-model-name `SemaphoreSlim`
+to serialize concurrent ensure-calls for the same model.
+
+**Validation performed**:
+- `./dotnet.sh build FastTTSR.slnx` → 0 errors. `./dotnet.sh test tests/FastTTSR.Api.Tests` → 43/43
+  still pass (ModelCache fix didn't regress anything).
+- Ran `AsrCircularTests` unfiltered without `ASR_MODEL_TESTS` set → all 12 cases correctly show as
+  **Skipped**, 0 downloads triggered, ~60ms total (confirms the gate is truly zero-cost by default).
+- Ran one opt-in case for real (`short-1` × `nemotron-3.5`) against a **warm** model cache (to
+  isolate from the download-race bug above, which is now fixed but wasn't yet at test time): the
+  full pipeline (TTS synthesis → HTTP → ASR transcription → WER check) executed correctly
+  end-to-end in ~6s with **no crash**. The test still *fails* its WER assertion (100% WER, garbled
+  output) - this is the **already-documented, tracked Nemotron accuracy caveat** (mel-scale/framing
+  uncertainty, see Phase 3), not a bug in the test itself. This is expected and desired: the test
+  correctly detects the known accuracy gap and will start passing once that's tuned.
+- Whisper cases are expected to still hit the Phase 5/6-tracked native-library-load issue in
+  container environments until that's fixed.
+
+**Actual output files**:
+- `tests/FastTTSR.Api.IntegrationTests/TestData/test_text.md` (new)
+- `tests/FastTTSR.Api.IntegrationTests/Support/AsrTestCorpus.cs` (new)
+- `tests/FastTTSR.Api.IntegrationTests/Support/WordErrorRate.cs` (new)
+- `tests/FastTTSR.Api.IntegrationTests/Support/WavTestUtils.cs` (new)
+- `tests/FastTTSR.Api.IntegrationTests/Support/AsrModelTestGate.cs` (new)
+- `tests/FastTTSR.Api.IntegrationTests/AsrCircularTests.cs` (new)
+- `tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj` (modified: added
+  `Xunit.SkippableFact` package + `TestData/test_text.md` copy-to-output)
+- `src/FastTTSR.Api/Services/ModelCache.cs` (modified: per-model-name locking, bug fix)
+- `tests/run-tests.sh` (modified: new `asr-model-tests` mode)
+- `docker-compose.test.yml` (modified: new `asr-model-tests` service, self-hosting, no `fastttsr`
+  dependency, `ASR_MODEL_TESTS=1`)
+- `Dockerfile.tests` (modified: added `libgomp1` so Whisper's native lib has a chance to load)
+- `.github/workflows/ci-tests.yml` (modified: integration-tests job now runs `dotnet test ... --filter "Category!=AsrModelTests"`, explicit belt-and-suspenders exclusion alongside the env-var gate)
+
+**How to run**: `ASR_MODEL_TESTS=1 dotnet test tests/FastTTSR.Api.IntegrationTests/... --filter
+"Category=AsrModelTests"`, or `./tests/run-tests.sh asr-model-tests` (docker-compose-based).
 
 ---
 

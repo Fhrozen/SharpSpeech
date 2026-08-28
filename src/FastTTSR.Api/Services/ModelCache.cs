@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using FastTTSR.Api.Models;
 using FastTTSR.Api.Options;
 using Microsoft.Extensions.Options;
@@ -11,6 +12,7 @@ public sealed class ModelCache : IModelCache
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _cacheDirectory;
     private readonly ILogger<ModelCache> _logger;
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _modelLocks = new();
 
     public ModelCache(IHttpClientFactory httpClientFactory, IOptions<ModelCacheOptions> options, ILogger<ModelCache> logger)
     {
@@ -24,24 +26,35 @@ public sealed class ModelCache : IModelCache
         var targetDirectory = Path.Combine(_cacheDirectory, model.Name);
         Directory.CreateDirectory(targetDirectory);
 
-        var client = _httpClientFactory.CreateClient();
-        await DownloadAssetsAsync(client, targetDirectory, model.Name, model.Assets, cancellationToken);
-
-        if (string.Equals(model.Engine, KokoroEngine, StringComparison.OrdinalIgnoreCase) &&
-            !string.IsNullOrWhiteSpace(model.VoicesPath) &&
-            !string.IsNullOrWhiteSpace(model.VoicesBaseUrl))
+        // Serialize concurrent ensure-calls for the same model (e.g. background warmup racing an
+        // on-demand request) so they don't write the same asset files at the same time.
+        var modelLock = _modelLocks.GetOrAdd(model.Name, _ => new SemaphoreSlim(1, 1));
+        await modelLock.WaitAsync(cancellationToken);
+        try
         {
-            await DownloadVoiceFiles(client, model, targetDirectory, cancellationToken);
-        }
+            var client = _httpClientFactory.CreateClient();
+            await DownloadAssetsAsync(client, targetDirectory, model.Name, model.Assets, cancellationToken);
 
-        if (SupertonicMetadata.IsSupertonic3Engine(model.Engine) &&
-            !string.IsNullOrWhiteSpace(model.VoicesPath) &&
-            !string.IsNullOrWhiteSpace(model.VoicesBaseUrl))
+            if (string.Equals(model.Engine, KokoroEngine, StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(model.VoicesPath) &&
+                !string.IsNullOrWhiteSpace(model.VoicesBaseUrl))
+            {
+                await DownloadVoiceFiles(client, model, targetDirectory, cancellationToken);
+            }
+
+            if (SupertonicMetadata.IsSupertonic3Engine(model.Engine) &&
+                !string.IsNullOrWhiteSpace(model.VoicesPath) &&
+                !string.IsNullOrWhiteSpace(model.VoicesBaseUrl))
+            {
+                await DownloadVoiceFiles(client, model, targetDirectory, cancellationToken);
+            }
+
+            return targetDirectory;
+        }
+        finally
         {
-            await DownloadVoiceFiles(client, model, targetDirectory, cancellationToken);
+            modelLock.Release();
         }
-
-        return targetDirectory;
     }
 
     public async Task<string> EnsureModelAsync(AsrModelDefinition model, CancellationToken cancellationToken)
@@ -49,10 +62,19 @@ public sealed class ModelCache : IModelCache
         var targetDirectory = Path.Combine(_cacheDirectory, model.Name);
         Directory.CreateDirectory(targetDirectory);
 
-        var client = _httpClientFactory.CreateClient();
-        await DownloadAssetsAsync(client, targetDirectory, model.Name, model.Assets, cancellationToken);
+        var modelLock = _modelLocks.GetOrAdd(model.Name, _ => new SemaphoreSlim(1, 1));
+        await modelLock.WaitAsync(cancellationToken);
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            await DownloadAssetsAsync(client, targetDirectory, model.Name, model.Assets, cancellationToken);
 
-        return targetDirectory;
+            return targetDirectory;
+        }
+        finally
+        {
+            modelLock.Release();
+        }
     }
 
     private async Task DownloadAssetsAsync(

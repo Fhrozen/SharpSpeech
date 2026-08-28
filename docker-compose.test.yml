@@ -50,5 +50,22 @@ services:
     profiles:
       - test
 
+  # Opt-in ASR/TTS circular model tests - self-hosts the app in-process (WebApplicationFactory),
+  # so it does NOT depend on the `fastttsr` service. Downloads real TTS+ASR models; skipped by
+  # default (ASR_MODEL_TESTS unset) and excluded from CI - see docs/ASR_IMPLEMENTATION_PLAN.md.
+  asr-model-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.tests
+    command: ["tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj", "--filter", "Category=AsrModelTests"]
+    environment:
+      ASR_MODEL_TESTS: "1"
+      MODEL_CACHE_DIR: /cache
+    volumes:
+      - ./model-cache:/cache
+      - ./test-results:/src/test-results
+    profiles:
+      - test
+
 volumes:
   model-cache:

@@ -145,6 +145,7 @@ jobs:
           dotnet test tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj \
             --no-build \
             --configuration Release \
+            --filter "Category!=AsrModelTests" \
             --logger "trx;LogFileName=integration-test-results.trx" \
             --logger "console;verbosity=normal" \
             --results-directory ./test-results

@@ -56,6 +56,12 @@ case $TEST_TYPE in
         docker compose -f docker-compose.test.yml down
         ;;
     
+    asr-model-tests)
+        echo "Running opt-in ASR/TTS circular model tests (real model downloads + real inference)..."
+        echo "This does NOT run in CI and is skipped by default; see docs/ASR_IMPLEMENTATION_PLAN.md."
+        run_tests "ASR Model" "asr-model-tests" || EXIT_CODE=$?
+        ;;
+    
     all)
         echo "Running all tests..."
         echo ""
@@ -79,7 +85,7 @@ case $TEST_TYPE in
     
     *)
         echo -e "${RED}Invalid test type: $TEST_TYPE${NC}"
-        echo "Usage: $0 [unit|integration|all]"
+        echo "Usage: $0 [unit|integration|asr-model-tests|all]"
         exit 1
         ;;
 esac

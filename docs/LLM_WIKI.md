@@ -172,6 +172,26 @@ Vue 3 + TypeScript, Composition API, no UI framework/router/state library (delib
 - Run: `dotnet test tests/FastTTSR.Api.Tests`, or `./tests/run-tests.sh all` /
   `docker compose -f docker-compose.test.yml up --abort-on-container-exit` for integration.
 
+### Circular TTS->ASR model tests (opt-in, real models, not run in CI)
+`tests/FastTTSR.Api.IntegrationTests/AsrCircularTests.cs` synthesizes real audio via Supertonic-3
+(`test_text.md` corpus - short/long samples + a long multi-speaker conversation script) and feeds
+it into Whisper/Nemotron via the real HTTP endpoints, checking transcription quality (word error
+rate) and crash-resistance on long multi-chunk audio. **Opt-in only**: gated by
+`AsrModelTestGate`/`ASR_MODEL_TESTS=1` env var (via `Xunit.SkippableFact`, shows as Skipped by
+default - zero cost, no downloads, when not enabled) and tagged `[Trait("Category",
+"AsrModelTests")]`; CI's `ci-tests.yml` explicitly excludes this category. Run locally with
+`ASR_MODEL_TESTS=1 dotnet test ... --filter "Category=AsrModelTests"` or `./tests/run-tests.sh
+asr-model-tests`. See `docs/ASR_IMPLEMENTATION_PLAN.md` Phase 8 for full design notes, including a
+real concurrency bug this suite found and fixed in `ModelCache` (see below).
+
+### Known bug fixed: ModelCache concurrent-download race
+`ModelCache.EnsureModelAsync` (both Tts/Asr overloads) now serializes per-model downloads via a
+`ConcurrentDictionary<string, SemaphoreSlim>` keyed by model name. Previously, a background
+warmup service (`ModelWarmupService`/`AsrModelWarmupService`) racing an on-demand request for the
+same not-yet-cached model could write the same asset file concurrently, corrupting it / causing
+intermittent 500s - this affected TTS models too, not just ASR, it just hadn't been exercised
+before the circular ASR tests were added.
+
 ## Extension points
 
 ### Adding a new TTS engine

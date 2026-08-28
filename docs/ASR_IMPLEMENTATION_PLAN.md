@@ -56,8 +56,8 @@
 | 0 | Shared groundwork | ✅ Accepted |
 | 1 | ASR domain model & config plumbing | ✅ Accepted |
 | 2 | Whisper engine | ✅ Accepted |
-| 3 | Nemotron engine (spike + implementation) | ✅ Done (awaiting acceptance) |
-| 4 | ASR worker process + DI wiring | Not started |
+| 3 | Nemotron engine (spike + implementation) | ✅ Accepted |
+| 4 | ASR worker process + DI wiring | ✅ Done (awaiting acceptance) |
 | 5 | REST endpoints | Not started |
 | 6 | Docker/Compose packaging | Not started |
 | 7 | Frontend ASR UI | Not started |
@@ -212,7 +212,7 @@ correctly included for linux-x64 when `FastTTSR.Worker.Asr` is published inside 
 ---
 
 ## Phase 3 — Nemotron engine (spike + implementation)
-**Status**: ✅ Done (awaiting acceptance)
+**Status**: ✅ Accepted
 
 **Inputs**: Phase 1's `AsrModelDefinition`/`IAsrTranscriber`/`IIdleTrackingTranscriber`; the
 `nemotron-3.5` asset set downloaded via `IModelCache.EnsureModelAsync(AsrModelDefinition, ct)`
@@ -294,11 +294,17 @@ graph metadata):**
 
 **Verification**: `./dotnet.sh build FastTTSR.slnx` → 0 errors. The spike (encoder/decoder/joint
 graph metadata) was validated by actually loading the real ONNX graphs via a throwaway C# console
-app (`./dotnet.sh run`), not just read from docs — see spike findings above. **Not yet validated**:
-an actual end-to-end transcription with real model weights and real audio (the ~800MB asset
-download + a real test recording were out of scope for this turn) — numerical correctness of the
-mel/RNNT pipeline remains an open risk until that's done, consistent with the accepted
-"spike + iterate" risk. Not yet wired into DI/endpoints/worker (Phase 4/5).
+app (`./dotnet.sh run`), not just read from docs — see spike findings above. **Real-weights smoke
+test** (also via a throwaway C# console app, `ProjectReference` to `FastTTSR.Api.csproj`, deleted
+afterward): downloaded the full real `encoder.onnx.data`/`decoder.onnx.data`/`joint.onnx.data`
+(~770MB total), constructed a synthetic 3-second 16kHz mono sine-tone WAV, and called
+`NemotronAsrEngine.Transcribe` directly. **Result: SUCCESS in 2.3s** — the full pipeline (multi-chunk
+cache-aware encoder loop, RNNT greedy decode, vocabulary decode, language-id resolution) ran to
+completion with real weights with no exceptions and produced plausible-shaped (if nonsensical,
+since the input wasn't real speech) output text. This confirms the tensor shapes/session wiring are
+structurally correct end-to-end. **Still unverified**: transcription *accuracy* — that requires
+real speech audio + a known ground-truth transcript to check against, which wasn't available in
+this environment; the mel-scale/framing caveat above still stands.
 
 **Fallback if raw-ORT approach proves infeasible mid-spike**: `Microsoft.ML.OnnxRuntimeGenAI` using
 the model's provided `genai_config.json` (adds one dependency scoped to `Worker.Asr`/`Api`) — only
@@ -307,7 +313,7 @@ if agreed with the user, since it contradicts the locked-in decision above.
 ---
 
 ## Phase 4 — ASR worker process + DI wiring
-**Status**: Not started
+**Status**: ✅ Done (awaiting acceptance)
 
 **Inputs**: Phase 2 (`WhisperAsrTranscriber`) and Phase 3 (`NemotronAsrTranscriber`) both
 implementing `IAsrTranscriber`/`IIdleTrackingTranscriber`.
@@ -358,6 +364,41 @@ gRPC, plus `SERVER_MODE`-aware DI wiring in `Program.cs` so TTS/ASR/both can be 
 - `src/FastTTSR.Api/Services/AsrTranscriberRouter.cs` (new, in-process mode)
 - `src/FastTTSR.Api/Program.cs` (modified: SERVER_MODE parsing, keyed DI, ASR registrations)
 - `FastTTSR.slnx` (modified: add project)
+
+**Actual output files** (matches expected, plus 2 warmup/idle-monitor services not explicitly
+called out in the original plan but needed to mirror the TTS side completely):
+- `src/FastTTSR.Api/Protos/transcription.proto` (created) - own `csharp_namespace`
+  (`FastTTSR.Worker.Asr.Grpc`, distinct from synthesis.proto's `FastTTSR.Worker.Grpc`) to avoid
+  type-name collisions.
+- `src/FastTTSR.Api/FastTTSR.Api.csproj` (modified: added `Protobuf Include="Protos/transcription.proto" GrpcServices="Client"`)
+- `src/FastTTSR.Worker.Asr/FastTTSR.Worker.Asr.csproj` (created, mirrors `FastTTSR.Worker.csproj`)
+- `src/FastTTSR.Worker.Asr/Program.cs` (created, mirrors `Worker/Program.cs`: same
+  `--port/--model-key/--idle-timeout` args, `app.RunAsync()` + 500ms delay + `READY:{port}` stdout
+  signal, default port 50151)
+- `src/FastTTSR.Worker.Asr/Services/WorkerTranscriptionService.cs` (created, mirrors
+  `WorkerSynthesisService`: single-active-engine-with-lock pattern, routes by `request.Engine`)
+- `src/FastTTSR.Api/Options/AsrWorkerOptions.cs` (created)
+- `src/FastTTSR.Api/Services/AsrWorkerProxyTranscriber.cs` (created, mirrors
+  `WorkerProxySynthesizer`, resolves its `WorkerProcessManager` via `[FromKeyedServices("asr")]`)
+- `src/FastTTSR.Api/Services/AsrTranscriberRouter.cs` (created, mirrors `TtsSynthesizerRouter`)
+- `src/FastTTSR.Api/Services/AsrModelWarmupService.cs` (created, mirrors `ModelWarmupService`)
+- `src/FastTTSR.Api/Services/AsrModelIdleMonitorService.cs` (created, mirrors
+  `ModelIdleMonitorService`; shares the same `ModelIdleMonitorOptions`/`MODEL_IDLE_TIMEOUT_SECONDS`
+  config as TTS rather than adding a new env var)
+- `src/FastTTSR.Api/Program.cs` (modified): added `SERVER_MODE` env var parsing
+  (`tts`(default)/`asr`/`both` → `ttsEnabled`/`asrEnabled` booleans); wrapped the existing TTS
+  registration block in `if (ttsEnabled)` **unchanged internally** (byte-identical when
+  `SERVER_MODE` unset); added a parallel `if (asrEnabled)` block registering
+  `IAsrModelCatalog`/`IAsrTranscriber` (worker-mode via a **keyed** `"asr"` `WorkerProcessManager`
+  instance so it can coexist with TTS's own non-keyed instance without collision, or in-process mode
+  via `AsrTranscriberRouter`).
+- `FastTTSR.slnx` (modified: added `FastTTSR.Worker.Asr` project)
+
+**Verification**: `./dotnet.sh build FastTTSR.slnx` → 0 errors, 0 warnings.
+`./dotnet.sh test tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj` → all 43 existing tests still
+pass (confirms default `SERVER_MODE=tts` behavior is unaffected). Endpoints for ASR don't exist yet
+(Phase 5), so `IAsrTranscriber`/`IAsrModelCatalog` aren't exercised end-to-end through HTTP yet -
+only compile-time/DI-graph correctness has been verified this phase.
 
 ---
 

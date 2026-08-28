@@ -260,9 +260,59 @@ recovered via a throwaway C# spike (`InferenceSession.InputMetadata`/`OutputMeta
   `blank_id`/`max_symbols_per_step`, NOT for `Microsoft.ML.OnnxRuntimeGenAI` — that library is
   intentionally not used).
 - **Open risk**: mel-scale formula (HTK vs Slaney) and frame-centering/dither details aren't fully
-  pinned down by config alone, and there's been no end-to-end test with real weights + real audio
-  yet (only graph-metadata validated) — see the plan doc's caveat before trusting output accuracy.
+  pinned down by config alone. A real-weights smoke test (throwaway harness, real
+  encoder/decoder/joint weights, synthetic sine-tone WAV input) ran the full pipeline **end-to-end
+  successfully with no exceptions** (multi-chunk encoder loop, RNNT greedy decode, vocab decode all
+  executed correctly) — this validates shapes/wiring, but **transcription accuracy is still
+  unverified** since there was no real speech + ground-truth transcript available to check against.
 - Not yet wired into DI/endpoints/worker — Phase 4/5.
+
+#### Worker process, DI wiring & SERVER_MODE (Phase 4 — done)
+- **`SERVER_MODE`** env var (`tts` (default) | `asr` | `both`) parsed at the top of `Program.cs`
+  into `ttsEnabled`/`asrEnabled` booleans. The entire pre-existing TTS registration block is now
+  wrapped in `if (ttsEnabled)` **with no internal changes** — behavior with `SERVER_MODE` unset is
+  byte-identical to before ASR existed (verified: all 43 pre-existing tests still pass). A parallel
+  `if (asrEnabled)` block mirrors it for ASR.
+- **Two independent worker types** can now run simultaneously: TTS's `WorkerProcessManager` stays
+  registered as a plain (non-keyed) singleton exactly as before; ASR's is registered as a
+  **keyed singleton** (`AddKeyedSingleton<WorkerProcessManager>("asr", ...)`) with its own
+  `WorkerOptions` (mapped from `AsrWorkerOptions`, `Options/AsrWorkerOptions.cs`) so it uses a
+  distinct port range (`50151+` vs TTS's `50051+`) and executable path
+  (`./worker-asr/FastTTSR.Worker.Asr`) — no changes needed to `WorkerProcessManager` itself beyond
+  the Phase 0 constructor generalization.
+- **`FastTTSR.Worker.Asr`** (new project, mirrors `FastTTSR.Worker` exactly): same
+  `--port/--model-key/--idle-timeout` CLI args, same `app.RunAsync()` + 500ms delay + `READY:{port}`
+  stdout signal Kestrel-HTTP/2 startup pattern. `Services/WorkerTranscriptionService.cs` mirrors
+  `WorkerSynthesisService`'s single-active-engine-with-lock pattern (only one of
+  `WhisperAsrEngine`/`NemotronAsrEngine` loaded at a time, swapped on model change), routing by
+  `request.Engine`.
+- **`Protos/transcription.proto`** (new, own `csharp_namespace = "FastTTSR.Worker.Asr.Grpc"` to
+  avoid clashing with synthesis.proto's `FastTTSR.Worker.Grpc`): `WorkerTranscription` service with
+  `Transcribe`/`HealthCheck` RPCs. `TranscribeRequest.model_path` is computed identically to TTS's
+  `SynthesizeRequest.model_path` (`Path.Combine(modelDirectory, model.ModelPath)`) — this
+  transparently yields a file path for Whisper (`model.ModelPath` = ggml filename) or a directory
+  path for Nemotron (`model.ModelPath` = `""`), matching what each engine constructor expects.
+- **`Services/AsrWorkerProxyTranscriber.cs`** (mirrors `WorkerProxySynthesizer`): implements
+  `IAsrTranscriber`, resolves its `WorkerProcessManager` via `[FromKeyedServices("asr")]`
+  constructor injection.
+- **`Services/AsrTranscriberRouter.cs`** (in-process/non-worker mode, mirrors
+  `TtsSynthesizerRouter`): routes by `model.Engine == "nemotron-3.5"` else defaults to Whisper.
+- **`Services/AsrModelWarmupService.cs`** / **`Services/AsrModelIdleMonitorService.cs`** mirror
+  `ModelWarmupService`/`ModelIdleMonitorService`. The idle monitor intentionally reuses the same
+  `ModelIdleMonitorOptions`/`MODEL_IDLE_TIMEOUT_SECONDS` config as TTS rather than introducing a
+  new env var.
+- Not yet exposed via HTTP — no `/v1/audio/transcriptions` endpoint exists yet, so
+  `IAsrTranscriber`/`IAsrModelCatalog` are wired into DI but unreachable until Phase 5.
+
+### Updated env var table (as of Phase 4)
+| Env var | Purpose | Default |
+|---|---|---|
+| `SERVER_MODE` | `tts`\|`asr`\|`both` — which task type(s) this instance serves | `tts` |
+| `AsrWorkerOptions__Enabled` | ASR worker-mode vs in-process | true |
+| `AsrWorkerOptions__ExecutablePath` | ASR worker binary path | `./worker-asr/FastTTSR.Worker.Asr` |
+| `AsrWorkerOptions__PortRangeStart` | first ASR gRPC port to try | 50151 |
+| `AsrWorkerOptions__IdleTimeoutSeconds` | ASR worker self-termination timeout | 60 |
+| (all pre-existing TTS env vars, unchanged — see table above) | | |
 
 ## Build tooling note
 No local `dotnet` CLI in the dev container — use `./dotnet.sh <args>` (Docker-based wrapper) for

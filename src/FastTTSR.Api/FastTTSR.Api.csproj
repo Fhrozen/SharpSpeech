@@ -31,6 +31,7 @@
 
   <ItemGroup>
     <Protobuf Include="Protos/synthesis.proto" GrpcServices="Client" />
+    <Protobuf Include="Protos/transcription.proto" GrpcServices="Client" />
   </ItemGroup>
 
 </Project>

@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/FastTTSR.Api/FastTTSR.Api.csproj" />
     <Project Path="src/FastTTSR.Worker/FastTTSR.Worker.csproj" />
+    <Project Path="src/FastTTSR.Worker.Asr/FastTTSR.Worker.Asr.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj" />

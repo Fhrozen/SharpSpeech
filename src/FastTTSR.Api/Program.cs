@@ -16,35 +16,84 @@ if (!string.IsNullOrWhiteSpace(httpsPort))
 
 builder.WebHost.UseUrls(urls.ToArray());
 
+// SERVER_MODE: tts (default, preserves pre-ASR behavior) | asr | both.
+var serverMode = (Environment.GetEnvironmentVariable("SERVER_MODE") ?? "tts").Trim().ToLowerInvariant();
+var ttsEnabled = serverMode is "tts" or "both";
+var asrEnabled = serverMode is "asr" or "both";
+Console.WriteLine($"[FastTTSR] SERVER_MODE={serverMode} (tts={ttsEnabled}, asr={asrEnabled})");
+
 builder.Services.Configure<ModelCacheOptions>(builder.Configuration.GetSection(ModelCacheOptions.SectionName));
 builder.Services.Configure<ModelIdleMonitorOptions>(builder.Configuration.GetSection(ModelIdleMonitorOptions.SectionName));
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection(WorkerOptions.SectionName));
+builder.Services.Configure<AsrWorkerOptions>(builder.Configuration.GetSection(AsrWorkerOptions.SectionName));
 builder.Services.AddHttpClient();
-builder.Services.AddSingleton<IModelCatalog, ModelCatalog>();
 builder.Services.AddSingleton<IModelCache, ModelCache>();
 
-// Configure synthesizer based on worker mode
-var workerOptions = builder.Configuration.GetSection(WorkerOptions.SectionName).Get<WorkerOptions>() ?? new WorkerOptions();
-
-if (workerOptions.Enabled)
+if (ttsEnabled)
 {
-    // Worker process mode - use proxy synthesizer
-    Console.WriteLine("[FastTTSR] Worker mode ENABLED - models will run in separate processes");
-    builder.Services.AddSingleton(sp => new WorkerProcessManager(workerOptions, sp.GetRequiredService<ILogger<WorkerProcessManager>>()));
-    builder.Services.AddHostedService(sp => sp.GetRequiredService<WorkerProcessManager>());
-    builder.Services.AddSingleton<ITtsSynthesizer, WorkerProxySynthesizer>();
-}
-else
-{
-    // In-process mode - use direct synthesizers
-    Console.WriteLine("[FastTTSR] Worker mode DISABLED - models will run in-process");
-    builder.Services.AddSingleton<KokoroTtsSynthesizer>();
-    builder.Services.AddSingleton<SupertonicTtsSynthesizer>();
-    builder.Services.AddSingleton<ITtsSynthesizer, TtsSynthesizerRouter>();
-    builder.Services.AddHostedService<ModelIdleMonitorService>();
+    builder.Services.AddSingleton<IModelCatalog, ModelCatalog>();
+
+    // Configure synthesizer based on worker mode
+    var workerOptions = builder.Configuration.GetSection(WorkerOptions.SectionName).Get<WorkerOptions>() ?? new WorkerOptions();
+
+    if (workerOptions.Enabled)
+    {
+        // Worker process mode - use proxy synthesizer
+        Console.WriteLine("[FastTTSR] TTS worker mode ENABLED - models will run in separate processes");
+        builder.Services.AddSingleton(sp => new WorkerProcessManager(workerOptions, sp.GetRequiredService<ILogger<WorkerProcessManager>>()));
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<WorkerProcessManager>());
+        builder.Services.AddSingleton<ITtsSynthesizer, WorkerProxySynthesizer>();
+    }
+    else
+    {
+        // In-process mode - use direct synthesizers
+        Console.WriteLine("[FastTTSR] TTS worker mode DISABLED - models will run in-process");
+        builder.Services.AddSingleton<KokoroTtsSynthesizer>();
+        builder.Services.AddSingleton<SupertonicTtsSynthesizer>();
+        builder.Services.AddSingleton<ITtsSynthesizer, TtsSynthesizerRouter>();
+        builder.Services.AddHostedService<ModelIdleMonitorService>();
+    }
+
+    builder.Services.AddHostedService<ModelWarmupService>();
 }
 
-builder.Services.AddHostedService<ModelWarmupService>();
+if (asrEnabled)
+{
+    builder.Services.AddSingleton<IAsrModelCatalog, AsrModelCatalog>();
+
+    var asrWorkerOptions = builder.Configuration.GetSection(AsrWorkerOptions.SectionName).Get<AsrWorkerOptions>() ?? new AsrWorkerOptions();
+
+    if (asrWorkerOptions.Enabled)
+    {
+        // Worker process mode - use proxy transcriber, on its own keyed WorkerProcessManager
+        // instance/port range so it can run alongside the TTS worker without colliding.
+        Console.WriteLine("[FastTTSR] ASR worker mode ENABLED - models will run in separate processes");
+        var asrProcessOptions = new WorkerOptions
+        {
+            ExecutablePath = asrWorkerOptions.ExecutablePath,
+            IdleTimeoutSeconds = asrWorkerOptions.IdleTimeoutSeconds,
+            PortRangeStart = asrWorkerOptions.PortRangeStart,
+            MaxPortAttempts = asrWorkerOptions.MaxPortAttempts,
+            StartupTimeoutSeconds = asrWorkerOptions.StartupTimeoutSeconds
+        };
+
+        builder.Services.AddKeyedSingleton<WorkerProcessManager>("asr",
+            (sp, _) => new WorkerProcessManager(asrProcessOptions, sp.GetRequiredService<ILogger<WorkerProcessManager>>()));
+        builder.Services.AddHostedService(sp => sp.GetRequiredKeyedService<WorkerProcessManager>("asr"));
+        builder.Services.AddSingleton<IAsrTranscriber, AsrWorkerProxyTranscriber>();
+    }
+    else
+    {
+        // In-process mode - use direct transcribers
+        Console.WriteLine("[FastTTSR] ASR worker mode DISABLED - models will run in-process");
+        builder.Services.AddSingleton<WhisperAsrTranscriber>();
+        builder.Services.AddSingleton<NemotronAsrTranscriber>();
+        builder.Services.AddSingleton<IAsrTranscriber, AsrTranscriberRouter>();
+        builder.Services.AddHostedService<AsrModelIdleMonitorService>();
+    }
+
+    builder.Services.AddHostedService<AsrModelWarmupService>();
+}
 
 // Add Swagger/OpenAPI support
 builder.Services.AddEndpointsApiExplorer();

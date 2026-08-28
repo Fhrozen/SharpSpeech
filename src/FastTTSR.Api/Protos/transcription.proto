@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+option csharp_namespace = "FastTTSR.Worker.Asr.Grpc";
+
+package transcription;
+
+// Service for ASR transcription operations running in the ASR worker process
+service WorkerTranscription {
+  // Transcribe audio to text
+  rpc Transcribe(TranscribeRequest) returns (TranscribeResponse);
+
+  // Health check for worker readiness
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// Request message for transcription
+message TranscribeRequest {
+  // Model configuration
+  string model_name = 1;
+  string engine = 2;
+  string model_path = 3;
+
+  // Transcription parameters
+  bytes audio_bytes = 10;
+  string audio_format = 11;
+  string language = 12;
+}
+
+// Response message for transcription
+message TranscribeResponse {
+  string text = 1;
+  string language_detected = 2;
+  double processing_time_seconds = 3;
+  double audio_duration_seconds = 4;
+}
+
+// Health check request
+message HealthCheckRequest {
+}
+
+// Health check response
+message HealthCheckResponse {
+  bool is_ready = 1;
+  string model_loaded = 2;
+  double idle_seconds = 3;
+}

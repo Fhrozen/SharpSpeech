@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+**/node_modules/
+frontend/dist/
+model-cache/
+test-results/
+.git/
+.vs/
+.vscode/

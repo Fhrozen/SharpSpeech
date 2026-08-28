@@ -26,6 +26,12 @@ Welcome to the FastTTSR documentation! This guide will help you get started with
 
 - **[Text Sanitization](TEXT_SANITIZATION.md)** - Thread safety and text processing
 
+### For AI Agents / Contributors
+
+- **[LLM Wiki](LLM_WIKI.md)** - Condensed, agent-optimized architecture reference (keep updated!)
+- **[ASR Implementation Plan](ASR_IMPLEMENTATION_PLAN.md)** - Phase-by-phase plan for the in-progress
+  ASR (Whisper/Nemotron) feature, with status tracking so work can resume across sessions
+
 ---
 
 ## Quick Start

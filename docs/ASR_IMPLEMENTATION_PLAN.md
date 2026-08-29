@@ -64,7 +64,7 @@
 | 8 | Tests | ✅ Done (awaiting acceptance) |
 | 9 | Documentation update (final) | ✅ Done (awaiting acceptance) |
 | 10 | Nemotron auto-detect-language fix | ✅ Done (awaiting acceptance) |
-| 11 | Universal audio input format support (ffmpeg) | Not started |
+| 11 | Universal audio input format support (ffmpeg) | ✅ Done (awaiting acceptance) |
 | 12 | VAD support + language UI polish | Not started |
 | 13 | Streaming ASR (mic/tab audio, WebSocket) | Not started |
 | 14 | Swagger + documentation sync (round 2) | Not started |
@@ -877,19 +877,75 @@ text. Whisper doesn't have this failure mode since it truly auto-detects.
 ---
 
 ## Phase 11 — Universal audio input format support (ffmpeg)
-**Status**: Not started
+**Status**: ✅ Done (awaiting acceptance)
 
 **Goal**: fix the crash/`NotSupportedException` when a non-WAV file (FLAC, MP3, etc.) is uploaded
 to `/v1/audio/transcriptions`, by normalizing every upload to PCM16 mono WAV before either ASR
 engine sees the bytes.
 
-**Planned changes**: new `Services/AudioFormatConverter.cs` shelling out to `ffmpeg` (evaluated
-against NAudio/pure-managed alternatives - NAudio's real codecs are Windows-only, managed
-alternatives like NLayer only cover MP3, not FLAC/OGG/WEBM/M4A; ffmpeg covers everything with one
-native dependency, mirroring the existing `ProcessStartInfo` pattern in
-`Services/WorkerProcessManager.cs`), wired into `Program.cs`'s `/v1/audio/transcriptions` handler
-right after reading the uploaded bytes; `ffmpeg` added to the `Dockerfile`'s `runtime-asr`/
-`runtime-all` stages only.
+**Library decision**: evaluated NAudio and pure-managed alternatives - NAudio's real codecs are
+Windows-only (ACM/Media Foundation), and managed decoders like NLayer only cover MP3, not
+FLAC/OGG/WEBM/M4A. Chose `ffmpeg`, shelled out via `ProcessStartInfo` mirroring the existing
+pattern in `Services/WorkerProcessManager.cs`.
+
+**Real bug found and fixed during verification (not just a hypothetical)**: initially, piping
+ffmpeg's WAV output straight through `pipe:1` produced files that `WavAudioUtils`'s strict parser
+rejected as "no data" for every single conversion, including ones that should have worked -
+confirmed via a real Docker-image test run (not just unit tests), then root-caused by inspecting
+the raw output bytes: **ffmpeg cannot seek on a non-seekable stdout pipe, so it writes a
+placeholder `0xFFFFFFFF` for both the RIFF chunk size and the `data` chunk size** (it doesn't know
+the true length until done and can't go back to patch the header). `WavAudioUtils.TryReadHeader`'s
+`dataSize > 0` check then rejected the file (`0xFFFFFFFF` reads as `-1` via `BitConverter.ToInt32`).
+This would have made every upload fail once wired in, not just FLAC/MP3 - fixed by having
+`AudioFormatConverter` patch the RIFF/data chunk size fields itself once the true output length is
+known (trivial since the bytes are already fully buffered in memory before returning).
+
+**Changes**:
+1. New `Services/AudioFormatConverter.cs`: `ToPcm16WavAsync(byte[], CancellationToken)` pipes
+   bytes to `ffmpeg -i pipe:0 -vn -ac 1 -acodec pcm_s16le -f wav pipe:1` via redirected
+   stdin/stdout (stdout/stderr drained concurrently with the stdin write to avoid a pipe
+   deadlock), throws with ffmpeg's stderr on failure, and patches the RIFF/data chunk sizes in the
+   returned bytes (see bug above).
+2. `Program.cs`'s `/v1/audio/transcriptions` handler: calls this unconditionally right after
+   reading the uploaded file bytes, before `IModelCache.EnsureModelAsync`/`IAsrTranscriber.
+   TranscribeAsync`; catches `InvalidOperationException`/`Win32Exception` (e.g. ffmpeg missing)
+   and returns a `400 invalid_request` instead of a 500.
+3. `Dockerfile`: `ffmpeg` added to the `runtime-asr`/`runtime-all` stages only (not `runtime-tts`).
+4. `Dockerfile.tests`: `ffmpeg` added so integration tests can exercise real conversion.
+5. Docs: `docs/API.md`/`docs/TROUBLESHOOTING.md` updated to describe the widened format support
+   and document the fixed bugs.
+
+**Actual output files**:
+- `src/FastTTSR.Api/Services/AudioFormatConverter.cs` (new)
+- `src/FastTTSR.Api/Program.cs` (modified: wiring + error handling + endpoint description)
+- `Dockerfile` (modified: `ffmpeg` in `runtime-asr`/`runtime-all`)
+- `Dockerfile.tests` (modified: `ffmpeg` added)
+- `tests/FastTTSR.Api.IntegrationTests/Support/FfmpegTestGate.cs` (new)
+- `tests/FastTTSR.Api.IntegrationTests/Support/FfmpegTestEncoder.cs` (new, test-only reverse
+  encoder used to build FLAC/MP3 fixtures)
+- `tests/FastTTSR.Api.IntegrationTests/AudioFormatConverterTests.cs` (new: FLAC/MP3 round-trip,
+  gated only on ffmpeg's presence, no model weights needed)
+- `tests/FastTTSR.Api.IntegrationTests/AsrCircularTests.cs` (modified: added
+  `Offline_NonWavUpload_TranscribesSuccessfully`, an opt-in real end-to-end FLAC upload test
+  gated on both `AsrModelTestGate` and `FfmpegTestGate`; `TranscribeAsync` gained optional
+  `fileName`/`contentType` params)
+- `docs/API.md`, `docs/TROUBLESHOOTING.md` (modified)
+
+**Verification**:
+- `./dotnet.sh build FastTTSR.slnx` → 0 errors.
+- `./dotnet.sh test tests/FastTTSR.Api.Tests` → 66/66 passed (unchanged).
+- `./dotnet.sh test tests/FastTTSR.Api.IntegrationTests --filter FullyQualifiedName~AudioFormatConverterTests`
+  → correctly **Skipped** (no ffmpeg in the plain SDK image `dotnet.sh` uses), proving the gate
+  works.
+- **Real verification, not just skip-checking**: built `Dockerfile.tests` (now includes `ffmpeg`)
+  into a throwaway image and ran the same test filter inside it for real - initially **failed**
+  (caught the pipe-header bug above), then **passed** after the fix (both FLAC and MP3
+  round-trips produced a normalized WAV with the correct ~1.0s duration). Also re-ran the full
+  unit test suite (66/66) inside that image to confirm no regressions. Throwaway image deleted
+  afterward.
+- Not yet run: the new opt-in `Offline_NonWavUpload_TranscribesSuccessfully` (needs real
+  downloaded model weights, `ASR_MODEL_TESTS=1`) - not exercised in this pass since no models were
+  downloaded in this environment; recommend running it before flipping this phase to Accepted.
 
 ---
 

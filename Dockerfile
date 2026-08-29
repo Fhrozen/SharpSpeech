@@ -51,6 +51,11 @@ ENTRYPOINT ["dotnet", "FastTTSR.Api.dll"]
 # --- ASR-only image: API + ASR worker only ---
 # docker build --target runtime-asr -t fastttsr:asr .
 FROM runtime-base AS runtime-asr
+# ffmpeg normalizes any uploaded audio format (FLAC, MP3, OGG, WEBM, M4A, ...) to WAV before ASR.
+RUN apt-get update && \
+    apt-get install -y ffmpeg && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 COPY --from=backend-build /out/worker-asr/ ./worker-asr/
 RUN chmod +x ./worker-asr/FastTTSR.Worker.Asr
 ENV AsrWorkerOptions__ExecutablePath=/app/worker-asr/FastTTSR.Worker.Asr
@@ -63,6 +68,11 @@ ENTRYPOINT ["dotnet", "FastTTSR.Api.dll"]
 # --- Combined image: API + both workers (default if no --target is given) ---
 # docker build -t fastttsr:all .   (equivalent to --target runtime-all)
 FROM runtime-base AS runtime-all
+# ffmpeg normalizes any uploaded audio format (FLAC, MP3, OGG, WEBM, M4A, ...) to WAV before ASR.
+RUN apt-get update && \
+    apt-get install -y ffmpeg && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 COPY --from=backend-build /out/worker/ ./worker/
 COPY --from=backend-build /out/worker-asr/ ./worker-asr/
 RUN chmod +x ./worker/FastTTSR.Worker ./worker-asr/FastTTSR.Worker.Asr

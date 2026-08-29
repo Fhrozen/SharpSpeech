@@ -101,6 +101,25 @@ public class AsrCircularTests
             $"[{asrModel}] transcript suspiciously short ({transcriptWordCount} words vs {referenceWordCount} reference words).");
     }
 
+    [SkippableFact]
+    public async Task Offline_NonWavUpload_TranscribesSuccessfully()
+    {
+        Skip.IfNot(AsrModelTestGate.IsEnabled, AsrModelTestGate.SkipReason);
+        Skip.IfNot(FfmpegTestGate.IsAvailable, FfmpegTestGate.SkipReason);
+
+        var sample = Corpus.Samples.First();
+        using var factory = CreateFactory();
+        var client = factory.CreateClient();
+
+        var wavBytes = await SynthesizeAsync(client, sample.Text, sample.Speaker ?? "F1");
+        var flacBytes = await FfmpegTestEncoder.EncodeAsync(wavBytes, "flac");
+
+        var transcript = await TranscribeAsync(client, flacBytes, "whisper-base", fileName: "sample.flac", contentType: "audio/flac");
+
+        _output.WriteLine($"FLAC upload transcript: \"{transcript}\"");
+        Assert.False(string.IsNullOrWhiteSpace(transcript), "FLAC upload produced an empty transcript.");
+    }
+
     public static IEnumerable<object[]> AsrModelNames() => AsrModels.Select(m => new object[] { m });
 
     private static WebApplicationFactory<Program> CreateFactory()
@@ -126,12 +145,12 @@ public class AsrCircularTests
         return await response.Content.ReadAsByteArrayAsync();
     }
 
-    private static async Task<string> TranscribeAsync(HttpClient client, byte[] wavBytes, string asrModel)
+    private static async Task<string> TranscribeAsync(HttpClient client, byte[] audioBytes, string asrModel, string fileName = "sample.wav", string contentType = "audio/wav")
     {
         using var content = new MultipartFormDataContent();
-        var audioContent = new ByteArrayContent(wavBytes);
-        audioContent.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
-        content.Add(audioContent, "file", "sample.wav");
+        var audioContent = new ByteArrayContent(audioBytes);
+        audioContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        content.Add(audioContent, "file", fileName);
         content.Add(new StringContent(asrModel), "model");
 
         var response = await client.PostAsync("/v1/audio/transcriptions", content);

@@ -625,6 +625,32 @@ match this.
 the uploaded audio before transcription. If you see this error, verify you're running a version
 that includes this fix (see `docs/LLM_WIKI.md`'s "Known fixes" section).
 
+### Uploading FLAC/MP3/OGG/etc. to `/v1/audio/transcriptions` fails or crashes (fixed)
+
+**Cause:** Both ASR engines originally assumed a 16-bit PCM RIFF/WAV container; any other format
+threw `NotSupportedException` from `WavAudioUtils`.
+
+**Solution:** Already fixed - the endpoint now normalizes every upload to PCM16 mono WAV via
+`Services/AudioFormatConverter.cs` (shells out to `ffmpeg`) before either engine sees the bytes, so
+any ffmpeg-decodable format works. Requires the `ffmpeg` binary in the runtime image - already
+installed in the shipped `Dockerfile`'s `runtime-asr`/`runtime-all` stages. If you're running the
+API outside Docker or in a custom image, install `ffmpeg` yourself; without it, uploads fail with
+a `400 invalid_request` ("Could not decode the uploaded audio file") instead of a crash.
+
+### Nemotron returns an empty transcript for non-English audio (fixed)
+
+**Cause:** `NemotronLanguages.Resolve` defaulted an unset/unrecognized `language` to lang_id `0`
+(English) instead of `101` (the model's actual auto-detect slot, per HuggingFace's
+`Nemotron3_5AsrConfig.default_prompt_id=101`). Since the frontend sends no `language` by default,
+non-English audio got wrong language conditioning and the RNNT decoder emitted mostly/only blank
+tokens.
+
+**Solution:** Already fixed - `Resolve` now defaults to `101`, and `NemotronVocabulary` extracts
+the model's own emitted `<xx-XX>` language tag in auto mode so `DetectedLanguage` reflects real
+detection. If you still see empty output, confirm you're running a build that includes this fix
+and that the frontend's "Auto-detect" language chip (or an explicit correct `language` value) is
+selected.
+
 ### Intermittent 500s when downloading a model for the first time under load
 
 **Cause:** A background warmup service (`ModelWarmupService`/`AsrModelWarmupService`) racing an

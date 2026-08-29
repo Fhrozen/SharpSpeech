@@ -429,6 +429,17 @@ app.MapPost("/v1/audio/transcriptions", async (
         audioBytes = audioStream.ToArray();
     }
 
+    // Normalize every upload (WAV, FLAC, MP3, OGG, WEBM, M4A, ...) to PCM16 mono WAV up front, so
+    // neither engine needs to understand more than one input format.
+    try
+    {
+        audioBytes = await AudioFormatConverter.ToPcm16WavAsync(audioBytes, cancellationToken);
+    }
+    catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+    {
+        return Results.BadRequest(new ErrorResponse("invalid_request", $"Could not decode the uploaded audio file: {ex.Message}"));
+    }
+
     var transcriptionRequest = new AudioTranscriptionRequest
     {
         Model = modelName,
@@ -449,7 +460,7 @@ app.MapPost("/v1/audio/transcriptions", async (
     .WithName("CreateTranscription")
     .WithTags("OpenAI Compatible")
     .WithSummary("Transcribe audio to text")
-    .WithDescription("Generates a transcription from the uploaded audio file using the specified ASR model. OpenAI-compatible endpoint. Multipart/form-data fields: file (required), model (required), language (optional), response_format (optional). Supports whisper-base (multilingual, auto language detection) and nemotron-3.5 (40 language-locales).")
+    .WithDescription("Generates a transcription from the uploaded audio file using the specified ASR model. OpenAI-compatible endpoint. Multipart/form-data fields: file (required, any ffmpeg-decodable format - WAV, FLAC, MP3, OGG, WEBM, M4A, etc. - normalized server-side before transcription), model (required), language (optional), response_format (optional). Supports whisper-base (multilingual, auto language detection) and nemotron-3.5 (40 language-locales).")
     .Accepts<IFormFile>("multipart/form-data")
     .Produces<object>(200)
     .Produces<ErrorResponse>(400)

@@ -386,6 +386,31 @@ the leading `<xx-XX>` tag the model emits in auto mode (previously discarded) so
 input; the frontend now shows an explicit "Auto-detect" language chip as the real default instead
 of silently defaulting to a specific language.
 
+#### Universal audio input format support (Phase 11 — done)
+`/v1/audio/transcriptions` no longer assumes WAV input: `Program.cs` calls
+`Services/AudioFormatConverter.cs`'s `ToPcm16WavAsync(byte[], CancellationToken)` unconditionally
+right after reading the uploaded file, before either engine sees the bytes. It shells out to
+`ffmpeg` (`-i pipe:0 -vn -ac 1 -acodec pcm_s16le -f wav pipe:1`, stdin/stdout/stderr piped
+concurrently to avoid a deadlock, mirroring `WorkerProcessManager`'s `ProcessStartInfo` pattern),
+so any format ffmpeg can decode (FLAC, MP3, OGG, WEBM, M4A, WAV, ...) works. Evaluated against
+NAudio/pure-managed alternatives first (NAudio's real codecs are Windows-only; managed decoders
+like NLayer only cover MP3) before choosing ffmpeg. `ffmpeg` is installed in the `Dockerfile`'s
+`runtime-asr`/`runtime-all` stages (not `runtime-tts`) and in `Dockerfile.tests`. If ffmpeg is
+missing or the input is undecodable, the endpoint returns `400 invalid_request` instead of a 500.
+
+**Real bug found during verification**: ffmpeg can't seek on a non-seekable stdout pipe, so it
+writes a placeholder `0xFFFFFFFF` for the RIFF and `data` chunk sizes instead of the real ones
+(confirmed by inspecting the raw output bytes of a real conversion). `WavAudioUtils`'s strict
+parser (`dataSize > 0`) rejected every single converted file as a result - this wasn't caught by
+plain unit tests (which skip when ffmpeg isn't on PATH, as in the plain SDK image `./dotnet.sh`
+uses) but was caught by actually building `Dockerfile.tests` into a real image and running the
+tests inside it. Fixed: `AudioFormatConverter` now patches the RIFF/data chunk size fields in the
+returned bytes itself once the true output length is known (the bytes are already fully buffered
+in memory). LESSON: piping a tool's output through stdout instead of a seekable file can silently
+produce structurally-invalid output for formats whose header needs a final byte count (WAV, and
+likely others) - verify with a real run through the actual container/environment, not just unit
+tests that might skip the code path entirely.
+
 #### Worker process, DI wiring & SERVER_MODE (Phase 4 — done)
 - **`SERVER_MODE`** env var (`tts` (default) | `asr` | `both`) parsed at the top of `Program.cs`
   into `ttsEnabled`/`asrEnabled` booleans. The entire pre-existing TTS registration block is now

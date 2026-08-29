@@ -325,7 +325,7 @@ response_format=json (optional, currently the only supported value)
 
 | Field | Required | Default | Description |
 |-------|----------|---------|--------------|
-| `file` | **Yes** | - | Audio file to transcribe (any format `Whisper.net`/the WAV reader can decode; non-16kHz-mono audio is resampled automatically for Whisper) |
+| `file` | **Yes** | - | Audio file to transcribe. Any format `ffmpeg` can decode (WAV, FLAC, MP3, OGG, WEBM, M4A, etc.) - normalized server-side to PCM16 mono WAV before either engine sees it |
 | `model` | **Yes** | - | Model ID (`whisper-base`, `nemotron-3.5`) |
 | `language` | No | Auto-detect | ISO language code hint (e.g. `en`, `ja`); both models support auto-detection if omitted |
 | `response_format` | No | `json` | Currently only `json` is implemented |

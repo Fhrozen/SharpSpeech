@@ -239,12 +239,18 @@ function updateAsrStatus(type: StatusType, title: string, message: string) {
   asrStatusMessage.value = message
 }
 
+const asrLanguageOptions = computed(() => {
+  const model = selectedAsrModel.value
+  if (!model) return []
+  return model.supportsLanguageAutoDetect ? ['auto', ...model.supportedLanguages] : model.supportedLanguages
+})
+
 function syncAsrModelDefaults() {
   const model = selectedAsrModel.value
   if (!model) return
 
-  if (model.supportedLanguages.length > 0 && !model.supportedLanguages.includes(asrForm.language)) {
-    asrForm.language = ''
+  if (!asrLanguageOptions.value.includes(asrForm.language)) {
+    asrForm.language = model.supportsLanguageAutoDetect ? 'auto' : ''
   }
 }
 
@@ -298,6 +304,7 @@ async function transcribe() {
     const payload = new FormData()
     payload.append('file', asrForm.file)
     payload.append('model', asrForm.model)
+    // 'auto' is sent through explicitly (not omitted) so the server always knows auto-detect was chosen.
     if (asrForm.language) {
       payload.append('language', asrForm.language)
     }
@@ -443,9 +450,9 @@ onMounted(async () => {
               <ModelSelector v-model="asrForm.model" :models="asrModels" @update:model-value="syncAsrModelDefaults" />
 
               <LanguageSelector
-                v-if="selectedAsrModel?.supportedLanguages && selectedAsrModel.supportedLanguages.length > 0"
+                v-if="asrLanguageOptions.length > 0"
                 v-model="asrForm.language"
-                :languages="selectedAsrModel.supportedLanguages"
+                :languages="asrLanguageOptions"
               />
 
               <AudioFileInput v-model="asrForm.file" />

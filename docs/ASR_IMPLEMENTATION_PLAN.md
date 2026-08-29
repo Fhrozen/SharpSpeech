@@ -63,6 +63,11 @@
 | 7 | Frontend ASR UI | ✅ Accepted |
 | 8 | Tests | ✅ Done (awaiting acceptance) |
 | 9 | Documentation update (final) | ✅ Done (awaiting acceptance) |
+| 10 | Nemotron auto-detect-language fix | ✅ Done (awaiting acceptance) |
+| 11 | Universal audio input format support (ffmpeg) | Not started |
+| 12 | VAD support + language UI polish | Not started |
+| 13 | Streaming ASR (mic/tab audio, WebSocket) | Not started |
+| 14 | Swagger + documentation sync (round 2) | Not started |
 
 ---
 
@@ -811,6 +816,112 @@ to serialize concurrent ensure-calls for the same model.
   (`SERVER_MODE`, `AsrWorkerOptions__*`) and endpoint contracts (`/api/server-info`,
   `/api/asr-models`, `/v1/audio/transcriptions`) directly against `Program.cs`/`Options/*.cs`/
   `Contracts/*.cs` source to avoid drift.
+
+---
+
+## Follow-up work (post-Phase-9): bug fixes and new ASR capabilities
+
+Opened after user testing surfaced real issues with the shipped ASR feature. Continues the same
+phase-by-phase/acceptance-gated process as Phases -1..9 above.
+
+## Phase 10 — Nemotron auto-detect-language fix
+**Status**: ✅ Done (awaiting acceptance)
+
+**Inputs**: the working (per Phase 3/8) Nemotron engine; a user report that Nemotron returns an
+empty transcript for audio where Whisper succeeds.
+
+**Root cause**: confirmed against HuggingFace's own `transformers` docs for
+`nvidia/nemotron-3.5-asr-streaming-0.6b` - `Nemotron3_5AsrConfig.default_prompt_id=101` is the
+model's own default and is the "auto-detect" language-prompt slot, matching our own
+`NemotronLanguages.CodeToId["auto"]=101`. But `NemotronLanguages.Resolve` fell back to `0`
+(English) whenever no language was given/recognized - and the frontend sends no `language` param
+by default (`asrForm.language = ''` in `App.vue`). For non-English audio, this wrong language
+conditioning desensitizes the RNNT decoder, which then emits mostly/only blank tokens -> empty
+text. Whisper doesn't have this failure mode since it truly auto-detects.
+
+**Changes**:
+1. `Services/NemotronLanguages.cs`: `Resolve`'s fallback changed from `0` to `101` for
+   null/empty/unrecognized language input.
+2. `Services/NemotronVocabulary.cs`: added a `Decode(tokenIds, out string? detectedLanguageTag)`
+   overload that extracts the leading `<xx-XX>`-shaped language tag the model emits in auto-detect
+   mode (previously silently discarded along with other control tokens) via a small regex match;
+   the existing no-out-param `Decode` now delegates to it, discarding the tag.
+3. `Services/NemotronAsrEngine.cs`'s `Transcribe()`: uses the new decode overload so
+   `DetectedLanguage` reflects the model's own detection in auto mode instead of just echoing back
+   the (possibly null) input language.
+4. `frontend/src/App.vue`/`frontend/src/components/LanguageSelector.vue`: added an explicit
+   "Auto-detect" chip (prepended to the language list whenever `supportsLanguageAutoDetect` is
+   true, including for Whisper which previously had no visible language selector at all since its
+   `SupportedLanguages` array is empty), made it the real default via `syncAsrModelDefaults()`
+   (`asrForm.language = 'auto'` instead of `''`), and sent it through explicitly to the server
+   rather than omitting the field - both paths now converge to the same fixed `101` lang_id.
+
+**Actual output files**:
+- `src/FastTTSR.Api/Services/NemotronLanguages.cs` (modified: default fallback)
+- `src/FastTTSR.Api/Services/NemotronVocabulary.cs` (modified: language-tag-aware decode overload)
+- `src/FastTTSR.Api/Services/NemotronAsrEngine.cs` (modified: uses new decode overload)
+- `frontend/src/App.vue` (modified: `asrLanguageOptions` computed, `syncAsrModelDefaults`,
+  `transcribe()` comment)
+- `frontend/src/components/LanguageSelector.vue` (modified: `'auto': 'Auto-detect'` display label)
+- `tests/FastTTSR.Api.Tests/NemotronLanguagesTests.cs` (new)
+- `tests/FastTTSR.Api.Tests/NemotronVocabularyTests.cs` (new)
+
+**Verification**:
+- `./dotnet.sh build FastTTSR.slnx` → 0 errors.
+- `./dotnet.sh test tests/FastTTSR.Api.Tests` → 66/66 passed (was 54; +12 new tests).
+- `cd frontend && npx vue-tsc --noEmit && pnpm run build` → 0 type errors, build succeeds.
+- Not yet re-run: the opt-in `AsrCircularTests`/a live non-English-audio smoke test against real
+  Nemotron weights (no model weights available in this pass) - the fix is verified by
+  build/unit-test only so far; recommend a real-audio check before flipping to Accepted.
+
+---
+
+## Phase 11 — Universal audio input format support (ffmpeg)
+**Status**: Not started
+
+**Goal**: fix the crash/`NotSupportedException` when a non-WAV file (FLAC, MP3, etc.) is uploaded
+to `/v1/audio/transcriptions`, by normalizing every upload to PCM16 mono WAV before either ASR
+engine sees the bytes.
+
+**Planned changes**: new `Services/AudioFormatConverter.cs` shelling out to `ffmpeg` (evaluated
+against NAudio/pure-managed alternatives - NAudio's real codecs are Windows-only, managed
+alternatives like NLayer only cover MP3, not FLAC/OGG/WEBM/M4A; ffmpeg covers everything with one
+native dependency, mirroring the existing `ProcessStartInfo` pattern in
+`Services/WorkerProcessManager.cs`), wired into `Program.cs`'s `/v1/audio/transcriptions` handler
+right after reading the uploaded bytes; `ffmpeg` added to the `Dockerfile`'s `runtime-asr`/
+`runtime-all` stages only.
+
+---
+
+## Phase 12 — VAD support (Nemotron) + language UI polish
+**Status**: Not started
+
+**Goal**: wire the currently-downloaded-but-unused `silero_vad.onnx` asset into real chunk-gating
+during Nemotron transcription (ported from the validated Python reference's `VadGate`/
+`SileroVadOrt` classes in `pyscripts/nemotron_speech_ort_only.py`), exposed as an opt-in
+`use_vad` request field and a frontend checkbox shown only for models with `SupportsVad=true`.
+
+---
+
+## Phase 13 — Streaming ASR (mic + tab/system audio capture, WebSocket)
+**Status**: Not started
+
+**Goal**: real-time transcription over a new WebSocket endpoint, for both engines (Nemotron via a
+true stateful per-chunk streaming session; Whisper via a naive buffer-and-retranscribe approach),
+capturing audio from either the microphone or tab/system audio in a new `LiveTranscription.vue`
+frontend component. **Scope note**: v1 requires in-process ASR mode
+(`AsrWorkerOptions__Enabled=false`) - worker-mode gRPC streaming support is out of scope for this
+phase.
+
+---
+
+## Phase 14 — Swagger + documentation sync (round 2)
+**Status**: Not started
+
+**Goal**: document the widened format support, `use_vad`/`language=auto` fields, and the new
+streaming endpoint (via a manual OpenAPI document filter, since Swashbuckle can't natively
+represent WebSocket endpoints) in Swagger UI and across `docs/API.md`/`docs/CONFIGURATION.md`/
+`docs/TROUBLESHOOTING.md`/`docs/MODELS.md`/`docs/LLM_WIKI.md`.
 
 ---
 

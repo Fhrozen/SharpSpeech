@@ -373,6 +373,19 @@ and per-chunk framing/left-context-carry semantics (previously a whole-utterance
 paragraphs, and a 20-turn, multi-minute conversation transcribed at near-perfect accuracy (297
 words produced vs. 296 reference words, correctly threading cache state across ~80+ chunks).
 
+**Second bugfix (post-user-testing): wrong auto-detect default.** `NemotronLanguages.Resolve`
+fell back to lang_id `0` (English) whenever no language was specified, but HuggingFace's own
+`transformers` docs for this model state `default_prompt_id=101` (matching our own
+`CodeToId["auto"]`) is the model's real default/auto-detect slot. Since the frontend sends no
+`language` by default, any non-English audio got wrong conditioning -> the RNNT decoder emitted
+mostly/only blank -> empty transcript (reported as "Nemotron returns nothing" while Whisper, which
+truly auto-detects, worked fine on the same audio). Fixed: `Resolve` now defaults to `101`;
+`NemotronVocabulary` gained a `Decode(tokenIds, out detectedLanguageTag)` overload that extracts
+the leading `<xx-XX>` tag the model emits in auto mode (previously discarded) so
+`NemotronAsrEngine.Transcribe`'s `DetectedLanguage` reflects real detection instead of echoing the
+input; the frontend now shows an explicit "Auto-detect" language chip as the real default instead
+of silently defaulting to a specific language.
+
 #### Worker process, DI wiring & SERVER_MODE (Phase 4 — done)
 - **`SERVER_MODE`** env var (`tts` (default) | `asr` | `both`) parsed at the top of `Program.cs`
   into `ttsEnabled`/`asrEnabled` booleans. The entire pre-existing TTS registration block is now

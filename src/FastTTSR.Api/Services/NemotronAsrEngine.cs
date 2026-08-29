@@ -87,7 +87,12 @@ public sealed class NemotronAsrEngine : IDisposable
         var encoderOutputs = RunEncoderChunks(samples, languageId);
         var tokenIds = RunRnntGreedyDecode(encoderOutputs);
 
-        return (_vocabulary.Decode(tokenIds), language);
+        var text = _vocabulary.Decode(tokenIds, out var languageTag);
+        // In auto-detect mode the model itself emits the detected language as a leading tag;
+        // fall back to it only when the caller didn't already specify a language explicitly.
+        var detectedLanguage = language ?? languageTag?.Trim('<', '>');
+
+        return (text, detectedLanguage);
     }
 
     private float[][] RunEncoderChunks(float[] samples, long languageId)

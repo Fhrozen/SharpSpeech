@@ -55,7 +55,10 @@ public static class NemotronLanguages
         ["nn"] = 104, ["nn-NO"] = 104,
     };
 
-    /// <summary>Resolves a language/locale code to Nemotron's lang_id, defaulting to English (0).</summary>
+    /// <summary>Resolves a language/locale code to Nemotron's lang_id, defaulting to the model's
+    /// own auto-detect slot (101, `Nemotron3_5AsrConfig.default_prompt_id`) when no language is
+    /// given or it isn't recognized - NOT English (0), which was the original, incorrect default
+    /// and desensitized the encoder to non-English audio.</summary>
     public static long Resolve(string? language) =>
-        !string.IsNullOrWhiteSpace(language) && CodeToId.TryGetValue(language, out var id) ? id : 0;
+        !string.IsNullOrWhiteSpace(language) && CodeToId.TryGetValue(language, out var id) ? id : 101;
 }

@@ -9,6 +9,7 @@ const emit = defineEmits<{
 }>()
 
 const languageMap: Record<string, string> = {
+  'auto': 'Auto-detect',
   'en': 'English',
   'en-us': 'English',
   'ja': 'Japanese',

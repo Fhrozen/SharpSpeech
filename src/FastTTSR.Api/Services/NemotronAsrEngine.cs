@@ -7,32 +7,35 @@ namespace FastTTSR.Api.Services;
 /// <summary>
 /// Cache-aware streaming FastConformer-RNNT ASR engine (encoder + LSTM predictor + joint, 3
 /// chained ONNX sessions), mirrors SupertonicTtsEngine's multi-session-in-one-class pattern.
-/// Tensor names/shapes below are as confirmed by the Phase 3 ONNX-graph inspection spike - see
-/// docs/ASR_IMPLEMENTATION_PLAN.md.
+/// All hyperparameters/tensor shapes are read from genai_config.json - NOT
+/// audio_processor_config.json, which is missing several required details (lang_id mapping,
+/// pre_encode_cache_size, chunk_samples, the correct log_eps value) and was only usable to get
+/// the pipeline running without crashing, not to produce accurate transcriptions. This
+/// implementation is ported from a validated Python/onnxruntime reference (see
+/// pyscripts/nemotron_speech_ort_only.py) after the original config.json-only implementation was
+/// found to produce garbled output - the encoder's output was nearly invariant to actual audio
+/// content because it was fed lang_id values in the thousands (vocab.txt tag line indices)
+/// instead of the small fixed integers (0-104) the model's language embedding actually expects.
 /// </summary>
 public sealed class NemotronAsrEngine : IDisposable
 {
-    // Fixed architecture constants confirmed via InferenceSession.InputMetadata/OutputMetadata.
-    private const int EncoderLayers = 24;
-    private const int EncoderHidden = 1024;
-    private const int CacheChannelFrames = 56;
-    private const int ConvContext = 8;
-    private const int DecoderLayers = 2;
-    private const int DecoderHidden = 640;
-    private const int PreEncodeCacheSize = 9;
-    private const int ChunkNewFrames = 56; // chunk_samples (8960) / hop_length (160)
-    private const int ChunkTotalFrames = PreEncodeCacheSize + ChunkNewFrames; // 65
-    private const int EncoderOutputFramesPerChunk = 7; // ChunkNewFrames / subsampling_factor (8)
-
     private readonly InferenceSession _encoder;
     private readonly InferenceSession _decoder;
     private readonly InferenceSession _joint;
     private readonly NemotronVocabulary _vocabulary;
     private readonly NemotronFeatureExtractor _featureExtractor;
+
     private readonly int _sampleRate;
+    private readonly int _chunkSamples;
+    private readonly int _encoderLayers;
+    private readonly int _encoderHidden;
+    private readonly int _cacheChannelFrames; // genai_config.json's "left_context"
+    private readonly int _convContext;
+    private readonly int _decoderLayers;
+    private readonly int _decoderHidden;
     private readonly long _blankId;
     private readonly int _maxSymbolsPerStep;
-    private readonly long _defaultLanguageId;
+    private readonly float _blankPenalty;
     private bool _disposed;
 
     public NemotronAsrEngine(string modelDirectory)
@@ -44,84 +47,82 @@ public sealed class NemotronAsrEngine : IDisposable
 
         _vocabulary = new NemotronVocabulary(Path.Combine(modelDirectory, "vocab.txt"));
 
-        var audioParams = JsonDocument.Parse(File.ReadAllText(Path.Combine(modelDirectory, "audio_processor_config.json")))
-            .RootElement.GetProperty("audio_params");
-        _sampleRate = audioParams.GetProperty("sample_rate").GetInt32();
+        var model = JsonDocument.Parse(File.ReadAllText(Path.Combine(modelDirectory, "genai_config.json")))
+            .RootElement.GetProperty("model");
+
+        _sampleRate = model.GetProperty("sample_rate").GetInt32();
+        _chunkSamples = model.GetProperty("chunk_samples").GetInt32();
+        _blankId = model.GetProperty("blank_id").GetInt64();
+        _maxSymbolsPerStep = model.GetProperty("max_symbols_per_step").GetInt32();
+        _blankPenalty = model.TryGetProperty("search", out var search) && search.TryGetProperty("blank_penalty", out var penaltyEl)
+            ? penaltyEl.GetSingle()
+            : 0f;
+
+        var encoderCfg = model.GetProperty("encoder");
+        _encoderHidden = encoderCfg.GetProperty("hidden_size").GetInt32();
+        _encoderLayers = encoderCfg.GetProperty("num_hidden_layers").GetInt32();
+        _cacheChannelFrames = model.GetProperty("left_context").GetInt32();
+        _convContext = model.GetProperty("conv_context").GetInt32();
+
+        var decoderCfg = model.GetProperty("decoder");
+        _decoderHidden = decoderCfg.GetProperty("hidden_size").GetInt32();
+        _decoderLayers = decoderCfg.GetProperty("num_hidden_layers").GetInt32();
+
         _featureExtractor = new NemotronFeatureExtractor(
             sampleRate: _sampleRate,
-            nFft: audioParams.GetProperty("n_fft").GetInt32(),
-            hopLength: audioParams.GetProperty("hop_length").GetInt32(),
-            winLength: audioParams.GetProperty("window_length").GetInt32(),
-            nMels: audioParams.GetProperty("n_mels").GetInt32(),
-            fMin: (float)audioParams.GetProperty("fmin").GetDouble(),
-            fMax: (float)audioParams.GetProperty("fmax").GetDouble(),
-            preemphasis: (float)audioParams.GetProperty("preemphasis").GetDouble(),
-            logZeroGuard: (float)audioParams.GetProperty("log_zero_guard_value").GetDouble());
-
-        var genaiConfigPath = Path.Combine(modelDirectory, "genai_config.json");
-        var model = JsonDocument.Parse(File.ReadAllText(genaiConfigPath)).RootElement.GetProperty("model");
-        _blankId = model.TryGetProperty("blank_id", out var blankEl) ? blankEl.GetInt64() : _vocabulary.BlankId;
-        _maxSymbolsPerStep = model.TryGetProperty("max_symbols_per_step", out var maxSymEl) ? maxSymEl.GetInt32() : 10;
-        _defaultLanguageId = _vocabulary.ResolveLanguageId("en-US", _blankId);
+            nFft: model.GetProperty("fft_size").GetInt32(),
+            hopLength: model.GetProperty("hop_length").GetInt32(),
+            winLength: model.GetProperty("win_length").GetInt32(),
+            nMels: model.GetProperty("num_mels").GetInt32(),
+            preemphasis: model.GetProperty("preemph").GetSingle(),
+            logEps: model.GetProperty("log_eps").GetSingle(),
+            preEncodeCacheSize: model.GetProperty("pre_encode_cache_size").GetInt32());
     }
 
     public (string Text, string? DetectedLanguage) Transcribe(byte[] wavBytes, string? language)
     {
         var samples = WavAudioUtils.ReadMonoFloat(wavBytes, _sampleRate);
-        var melFrames = _featureExtractor.ComputeLogMel(samples);
-        var languageId = _vocabulary.ResolveLanguageId(language, _defaultLanguageId);
+        var languageId = NemotronLanguages.Resolve(language);
 
-        var encoderOutputs = RunEncoderChunks(melFrames, languageId);
+        var encoderOutputs = RunEncoderChunks(samples, languageId);
         var tokenIds = RunRnntGreedyDecode(encoderOutputs);
 
         return (_vocabulary.Decode(tokenIds), language);
     }
 
-    private float[][] RunEncoderChunks(float[][] melFrames, long languageId)
+    private float[][] RunEncoderChunks(float[] samples, long languageId)
     {
-        // Prepend PreEncodeCacheSize zero frames so the first chunk has a (silent) lookback window.
-        var nMels = melFrames.Length > 0 ? melFrames[0].Length : 128;
-        var padded = new float[PreEncodeCacheSize + melFrames.Length][];
-        for (var i = 0; i < PreEncodeCacheSize; i++)
-        {
-            padded[i] = new float[nMels];
-        }
+        _featureExtractor.Reset();
 
-        Array.Copy(melFrames, 0, padded, PreEncodeCacheSize, melFrames.Length);
-
-        var cacheLastChannel = new float[EncoderLayers * CacheChannelFrames * EncoderHidden];
-        var cacheLastTime = new float[EncoderLayers * EncoderHidden * ConvContext];
+        var cacheLastChannel = new float[_encoderLayers * _cacheChannelFrames * _encoderHidden];
+        var cacheLastTime = new float[_encoderLayers * _encoderHidden * _convContext];
         long cacheLastChannelLen = 0;
 
         var allOutputs = new List<float[]>();
-        var chunkStart = 0;
 
-        while (chunkStart < melFrames.Length)
+        for (var offset = 0; offset < samples.Length; offset += _chunkSamples)
         {
-            var audioSignal = new float[ChunkTotalFrames * nMels];
-            var validFrames = 0;
+            var chunk = new float[_chunkSamples];
+            var available = Math.Min(_chunkSamples, samples.Length - offset);
+            Array.Copy(samples, offset, chunk, 0, available);
+            // Remaining entries stay zero (right-padding the final, possibly-short chunk).
 
-            for (var i = 0; i < ChunkTotalFrames; i++)
+            var melChunk = _featureExtractor.ProcessChunk(chunk);
+            var totalFrames = melChunk.Length;
+            var nMels = totalFrames > 0 ? melChunk[0].Length : 0;
+
+            var audioSignal = new float[totalFrames * nMels];
+            for (var i = 0; i < totalFrames; i++)
             {
-                var srcIndex = chunkStart + i;
-                if (srcIndex >= padded.Length)
-                {
-                    break;
-                }
-
-                Array.Copy(padded[srcIndex], 0, audioSignal, i * nMels, nMels);
-                if (i >= PreEncodeCacheSize)
-                {
-                    validFrames++;
-                }
+                Array.Copy(melChunk[i], 0, audioSignal, i * nMels, nMels);
             }
 
             var inputs = new List<NamedOnnxValue>
             {
-                NamedOnnxValue.CreateFromTensor("audio_signal", new DenseTensor<float>(audioSignal, new[] { 1, ChunkTotalFrames, nMels })),
-                NamedOnnxValue.CreateFromTensor("length", new DenseTensor<long>(new long[] { Math.Min(validFrames, ChunkNewFrames) }, new[] { 1 })),
-                NamedOnnxValue.CreateFromTensor("cache_last_channel", new DenseTensor<float>(cacheLastChannel, new[] { 1, EncoderLayers, CacheChannelFrames, EncoderHidden })),
-                NamedOnnxValue.CreateFromTensor("cache_last_time", new DenseTensor<float>(cacheLastTime, new[] { 1, EncoderLayers, EncoderHidden, ConvContext })),
+                NamedOnnxValue.CreateFromTensor("audio_signal", new DenseTensor<float>(audioSignal, new[] { 1, totalFrames, nMels })),
+                NamedOnnxValue.CreateFromTensor("length", new DenseTensor<long>(new long[] { totalFrames }, new[] { 1 })),
+                NamedOnnxValue.CreateFromTensor("cache_last_channel", new DenseTensor<float>(cacheLastChannel, new[] { 1, _encoderLayers, _cacheChannelFrames, _encoderHidden })),
+                NamedOnnxValue.CreateFromTensor("cache_last_time", new DenseTensor<float>(cacheLastTime, new[] { 1, _encoderLayers, _encoderHidden, _convContext })),
                 NamedOnnxValue.CreateFromTensor("cache_last_channel_len", new DenseTensor<long>(new long[] { cacheLastChannelLen }, new[] { 1 })),
                 NamedOnnxValue.CreateFromTensor("lang_id", new DenseTensor<long>(new long[] { languageId }, new[] { 1 })),
             };
@@ -133,19 +134,17 @@ public sealed class NemotronAsrEngine : IDisposable
             cacheLastTime = results.First(r => r.Name == "cache_last_time_next").AsTensor<float>().ToArray();
             cacheLastChannelLen = results.First(r => r.Name == "cache_last_channel_len_next").AsTensor<long>()[0];
 
-            var validOutputFrames = (int)Math.Min(encodedLengths, EncoderOutputFramesPerChunk);
+            var validOutputFrames = (int)Math.Min(encodedLengths, outputs.Dimensions[1]);
             for (var t = 0; t < validOutputFrames; t++)
             {
-                var frame = new float[EncoderHidden];
-                for (var d = 0; d < EncoderHidden; d++)
+                var frame = new float[_encoderHidden];
+                for (var d = 0; d < _encoderHidden; d++)
                 {
                     frame[d] = outputs[0, t, d];
                 }
 
                 allOutputs.Add(frame);
             }
-
-            chunkStart += ChunkNewFrames;
         }
 
         return allOutputs.ToArray();
@@ -155,8 +154,8 @@ public sealed class NemotronAsrEngine : IDisposable
     {
         var tokenIds = new List<int>();
         long lastToken = _blankId;
-        var hState = new float[DecoderLayers * DecoderHidden];
-        var cState = new float[DecoderLayers * DecoderHidden];
+        var hState = new float[_decoderLayers * _decoderHidden];
+        var cState = new float[_decoderLayers * _decoderHidden];
 
         foreach (var encoderFrame in encoderOutputs)
         {
@@ -188,8 +187,8 @@ public sealed class NemotronAsrEngine : IDisposable
         var inputs = new List<NamedOnnxValue>
         {
             NamedOnnxValue.CreateFromTensor("targets", new DenseTensor<long>(new[] { lastToken }, new[] { 1, 1 })),
-            NamedOnnxValue.CreateFromTensor("h_in", new DenseTensor<float>(hState, new[] { DecoderLayers, 1, DecoderHidden })),
-            NamedOnnxValue.CreateFromTensor("c_in", new DenseTensor<float>(cState, new[] { DecoderLayers, 1, DecoderHidden })),
+            NamedOnnxValue.CreateFromTensor("h_in", new DenseTensor<float>(hState, new[] { _decoderLayers, 1, _decoderHidden })),
+            NamedOnnxValue.CreateFromTensor("c_in", new DenseTensor<float>(cState, new[] { _decoderLayers, 1, _decoderHidden })),
         };
 
         using var results = _decoder.Run(inputs);
@@ -198,8 +197,8 @@ public sealed class NemotronAsrEngine : IDisposable
         var cOut = results.First(r => r.Name == "c_out").AsTensor<float>().ToArray();
 
         // Transpose (batch, hidden, seq=1) -> flat hidden vector for the single decode step.
-        var decoderOutput = new float[DecoderHidden];
-        for (var d = 0; d < DecoderHidden; d++)
+        var decoderOutput = new float[_decoderHidden];
+        for (var d = 0; d < _decoderHidden; d++)
         {
             decoderOutput[d] = rawOutput[0, d, 0];
         }
@@ -211,8 +210,8 @@ public sealed class NemotronAsrEngine : IDisposable
     {
         var inputs = new List<NamedOnnxValue>
         {
-            NamedOnnxValue.CreateFromTensor("encoder_output", new DenseTensor<float>(encoderFrame, new[] { 1, 1, EncoderHidden })),
-            NamedOnnxValue.CreateFromTensor("decoder_output", new DenseTensor<float>(decoderOutput, new[] { 1, 1, DecoderHidden })),
+            NamedOnnxValue.CreateFromTensor("encoder_output", new DenseTensor<float>(encoderFrame, new[] { 1, 1, _encoderHidden })),
+            NamedOnnxValue.CreateFromTensor("decoder_output", new DenseTensor<float>(decoderOutput, new[] { 1, 1, _decoderHidden })),
         };
 
         using var results = _joint.Run(inputs);
@@ -224,6 +223,11 @@ public sealed class NemotronAsrEngine : IDisposable
         for (var v = 0; v < vocabSize; v++)
         {
             var score = logits[0, 0, 0, v];
+            if (v == _blankId)
+            {
+                score -= _blankPenalty;
+            }
+
             if (score > bestScore)
             {
                 bestScore = score;

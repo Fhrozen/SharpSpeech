@@ -635,13 +635,25 @@ file, corrupting it. Affects both TTS and ASR models.
 a `ConcurrentDictionary<string, SemaphoreSlim>`. If you still see this on an older build, update to
 a version that includes the fix.
 
-### Nemotron transcription runs but output is garbled/inaccurate
+### Nemotron transcription was garbled/inaccurate (fixed)
 
-**Cause:** Nemotron's mel-scale/framing/dither feature-extraction parameters were reconstructed
-from `audio_processor_config.json` and the model's own ONNX graph shapes, not validated against a
-reference implementation with known-good ground truth. This is a known, tracked limitation, not a
-crash - see `docs/ASR_IMPLEMENTATION_PLAN.md` Phase 3 for details. If accuracy matters for your use
-case today, prefer `whisper-base` for Nemotron's currently-unverified languages/scenarios.
+**Cause (root-caused via real-audio diagnostics, see below):** the original implementation sourced
+feature-extraction parameters from `audio_processor_config.json` and derived the encoder's
+`lang_id` conditioning input from `vocab.txt`'s `<xx-YY>` tag line indices (e.g. `2947` for
+`<en-US>`). Both were wrong: `lang_id` actually expects a small fixed integer (`0` for English),
+not a vocab index - feeding a huge out-of-range id into every chunk desensitized the encoder to
+the actual audio almost entirely (confirmed by comparing encoder output for real speech vs. total
+silence: cosine similarity ~0.9995, i.e. nearly identical). The mel-scale (HTK instead of Slaney),
+`log_eps` value, window centering, and per-chunk framing algorithm were also all subtly wrong
+relative to what the model was actually trained/exported with.
+
+**Solution:** Already fixed - `NemotronAsrEngine`/`NemotronFeatureExtractor` now source all
+hyperparameters from `genai_config.json` and use a fixed `lang_id` lookup table
+(`Services/NemotronLanguages.cs`), ported from a validated Python/onnxruntime reference
+implementation. Confirmed via the opt-in circular tests: WER dropped from 100% to ~1-2% on
+multi-sentence paragraphs, and a 20-turn conversation transcribed at near-perfect accuracy
+(297 words produced vs. 296 reference words). If you still see garbled Nemotron output, confirm
+you're running a build that includes this fix.
 
 ### `/api/asr-models` or `/v1/audio/transcriptions` return 404 for the whole route
 

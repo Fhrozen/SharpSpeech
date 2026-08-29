@@ -329,6 +329,35 @@ this environment; the mel-scale/framing caveat above still stands.
 the model's provided `genai_config.json` (adds one dependency scoped to `Worker.Asr`/`Api`) — only
 if agreed with the user, since it contradicts the locked-in decision above.
 
+**Update (post-Phase-8): accuracy caveat resolved.** The "unverified accuracy" caveat above turned
+out to hide real bugs, not just unvalidated defaults. Root-caused after the user supplied a
+validated standalone Python reference implementation (`pyscripts/nemotron_speech_ort_only.py`,
+using only `onnxruntime`+`numpy`+`soundfile`, reverse-engineered from `onnxruntime-genai`'s own
+C++ source for this model). Diagnosis method: real-audio evidence, not guesswork - a throwaway
+reflection-based harness compared `NemotronAsrEngine`'s internal encoder output for real
+synthesized speech vs. total silence of the same length; cosine similarity was ~0.9995 (nearly
+identical), proving the encoder was almost completely ignoring actual audio content. Comparing
+against the Python reference found the root cause: **`lang_id` was being resolved from
+`vocab.txt`'s `<en-US>` tag line index (2947) instead of the small fixed integer (0) the model's
+language embedding actually expects** - an out-of-range id injected into every single chunk,
+drowning out the real acoustic signal. Several compounding bugs were fixed at the same time:
+- `lang_id`: now a fixed lookup table (`Services/NemotronLanguages.cs`), not derived from
+  `vocab.txt` tags at all.
+- Config source: switched entirely from `audio_processor_config.json` to `genai_config.json`
+  (`log_eps` was `1e-10` from the wrong file; the correct value is `5.96e-08`).
+- Mel scale: Slaney (librosa/NeMo default), not the classic HTK formula originally implemented.
+- Hann window: centered within the FFT frame (zero-padded on both sides), not left-aligned.
+- Framing: true stateful streaming (raw-audio chunks of `chunk_samples`, carrying `nFft/2` samples
+  of real left-context audio + the previous chunk's trailing log-mel frames across calls) instead
+  of computing log-mel for the whole utterance up front and slicing it.
+- Encoder's `length` input: total frames fed (cache + new), not just new frames.
+
+**Verified via the opt-in circular tests** (`AsrCircularTests`, real Supertonic-3-synthesized
+speech, real Nemotron weights): WER dropped from **100% → ~1-2%** on multi-sentence paragraph
+samples, and the 20-turn, multi-minute conversation streaming test now produces near-perfect
+output (297 words emitted vs. 296 reference words). `docs/MODELS.md`/`docs/LLM_WIKI.md`/
+`docs/TROUBLESHOOTING.md` updated to remove the now-resolved caveat language.
+
 ---
 
 ## Phase 4 — ASR worker process + DI wiring
@@ -523,11 +552,11 @@ runtime-all`, both in-process AND full worker mode):
   publish with `-r linux-x64 --self-contained false`).
 - In-process mode (`WorkerOptions__Enabled=false`, `AsrWorkerOptions__Enabled=false`): Whisper
   transcription of a Kokoro-generated WAV → 200, correct text. Nemotron transcription → 200,
-  garbled text (still the known, tracked accuracy caveat - not a packaging issue).
+  garbled text (known accuracy caveat at the time - since fixed, see Phase 3's "Update" note).
 - **Full worker mode** (production default, no env overrides): `/v1/audio/speech` (Supertonic-3),
   `/v1/audio/transcriptions` with `whisper-base` (correct text), and `/v1/audio/transcriptions`
-  with `nemotron-3.5` (garbled but non-crashing, same caveat) all returned 200 - confirms the ASR
-  worker subprocess correctly inherits `LD_LIBRARY_PATH` from its parent process.
+  with `nemotron-3.5` (garbled but non-crashing, same caveat - since fixed) all returned 200 -
+  confirms the ASR worker subprocess correctly inherits `LD_LIBRARY_PATH` from its parent process.
 
 **Expected output files**:
 - `Dockerfile` (modified)
@@ -702,10 +731,11 @@ to serialize concurrent ensure-calls for the same model.
 - Ran one opt-in case for real (`short-1` × `nemotron-3.5`) against a **warm** model cache (to
   isolate from the download-race bug above, which is now fixed but wasn't yet at test time): the
   full pipeline (TTS synthesis → HTTP → ASR transcription → WER check) executed correctly
-  end-to-end in ~6s with **no crash**. The test still *fails* its WER assertion (100% WER, garbled
-  output) - this is the **already-documented, tracked Nemotron accuracy caveat** (mel-scale/framing
-  uncertainty, see Phase 3), not a bug in the test itself. This is expected and desired: the test
-  correctly detects the known accuracy gap and will start passing once that's tuned.
+  end-to-end in ~6s with **no crash**. The test *failed* its WER assertion at the time (100% WER,
+  garbled output) - this was the Nemotron accuracy caveat tracked in Phase 3, since root-caused and
+  fixed (see Phase 3's "Update" note) - all `nemotron-3.5` circular test cases now pass (~1-2% WER).
+  This is what the test infrastructure was designed to catch: it correctly detected the accuracy
+  gap when it existed, and now confirms the fix.
 - Whisper cases are expected to still hit the Phase 5/6-tracked native-library-load issue in
   container environments until that's fixed.
 

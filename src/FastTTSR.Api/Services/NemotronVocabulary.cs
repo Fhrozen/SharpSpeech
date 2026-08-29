@@ -1,20 +1,16 @@
 using System.Text;
-using System.Text.RegularExpressions;
 
 namespace FastTTSR.Api.Services;
 
 /// <summary>
-/// Reads Nemotron's vocab.txt (plain id-per-line piece list) and decodes RNNT token id sequences
-/// to text. Also resolves a language code to its vocab-embedded language-tag id (e.g. "en-US" -&gt;
-/// the id of the "&lt;en-US&gt;" line), which doubles as the encoder's lang_id conditioning input -
-/// no separate tokenizer.json parsing is needed.
+/// Reads Nemotron's vocab.txt (plain id-per-line piece list, one entry per RNNT vocabulary id -
+/// identical ordering/content to tokenizer.json's `model.vocab`) and decodes RNNT token id
+/// sequences to text. Language conditioning is NOT derived from this file - see
+/// <see cref="NemotronLanguages"/> for the encoder's actual lang_id mapping.
 /// </summary>
 public sealed class NemotronVocabulary
 {
-    private static readonly Regex LanguageTagPattern = new("^<[a-zA-Z]{2}(-[A-Z]{2})?>$", RegexOptions.Compiled);
-
     private readonly IReadOnlyList<string> _pieces;
-    private readonly IReadOnlyDictionary<string, long> _languageTagIds;
 
     public long BlankId { get; }
 
@@ -22,42 +18,6 @@ public sealed class NemotronVocabulary
     {
         _pieces = File.ReadAllLines(vocabPath);
         BlankId = _pieces.Count - 1; // last line is "<blank>"
-
-        var languageTags = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < _pieces.Count; i++)
-        {
-            if (LanguageTagPattern.IsMatch(_pieces[i]))
-            {
-                var code = _pieces[i].Trim('<', '>');
-                languageTags[code] = i;
-            }
-        }
-
-        _languageTagIds = languageTags;
-    }
-
-    public long ResolveLanguageId(string? language, long defaultLanguageId)
-    {
-        if (string.IsNullOrWhiteSpace(language))
-        {
-            return defaultLanguageId;
-        }
-
-        if (_languageTagIds.TryGetValue(language, out var exact))
-        {
-            return exact;
-        }
-
-        // Fall back to a prefix match (e.g. "en" -> "<en-US>") if no exact tag exists.
-        foreach (var (code, id) in _languageTagIds)
-        {
-            if (code.StartsWith(language, StringComparison.OrdinalIgnoreCase))
-            {
-                return id;
-            }
-        }
-
-        return defaultLanguageId;
     }
 
     public string Decode(IReadOnlyList<int> tokenIds)

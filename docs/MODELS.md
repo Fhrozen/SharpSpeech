@@ -241,11 +241,12 @@ Segment-by-segment transcription → Concatenated text
   chunks (65 frames: 9 pre-encode cache + 56 new frames), threading `cache_last_channel`/
   `cache_last_time` tensors between chunks so the model's internal state carries over as if
   streaming, even though today's HTTP API is whole-file batch only
-- **Languages:** 35+ (see `src/FastTTSR.Api/config.json` for the full list)
-- **Known caveat:** mel-scale/framing/dither feature-extraction details are best-effort
-  reconstructions from the model's `audio_processor_config.json` (not independently verified
-  against a reference implementation) — transcription runs without crashing but accuracy on real
-  speech has not been rigorously validated; tracked in `docs/ASR_IMPLEMENTATION_PLAN.md`
+- **Languages:** 35+ (see `src/FastTTSR.Api/config.json` for the full list); language conditioning
+  uses a fixed `lang_id` integer table (`Services/NemotronLanguages.cs`), not vocab.txt tags
+- **Feature extraction:** all hyperparameters (mel scale/filterbank, framing, `log_eps`, chunk
+  size, `lang_id` mapping) are sourced from `genai_config.json`, ported from a validated
+  Python/onnxruntime reference implementation and confirmed accurate via real-audio circular
+  tests (~1-2% WER on multi-sentence paragraphs, near-perfect on a 20-turn conversation)
 
 **Download URL (source):**
 - `https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4`

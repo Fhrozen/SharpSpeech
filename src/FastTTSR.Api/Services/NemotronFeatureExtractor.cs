@@ -3,52 +3,110 @@ using System.Numerics;
 namespace FastTTSR.Api.Services;
 
 /// <summary>
-/// Log-mel spectrogram feature extractor matching audio_processor_config.json's parameters
-/// (n_fft=512, hop=160, win=400, n_mels=128, hann window, HTK mel scale). Self-contained (no
-/// external DSP library) - implements its own radix-2 FFT and triangular mel filterbank.
+/// Streaming log-mel spectrogram feature extractor matching genai_config.json's parameters
+/// (n_fft=512, hop=160, win=400, n_mels=128, Slaney mel scale + area normalization, natural log).
+/// Self-contained (no external DSP library) - implements its own radix-2 FFT and mel filterbank.
+///
+/// Ported from a validated Python/onnxruntime reference implementation (see
+/// pyscripts/nemotron_speech_ort_only.py): processes fixed-size raw-audio chunks statefully,
+/// carrying `nFft/2` samples of real left-context audio (not zero padding) and the previous
+/// chunk's last `pre_encode_cache_size` log-mel frames across calls, exactly mirroring how the
+/// model was streamed/tested. This differs from a naive single-shot whole-utterance STFT in two
+/// ways that materially affect model accuracy: the Hann window is zero-padded to sit centered
+/// within the FFT frame (not left-aligned), and the mel scale/filterbank is Slaney (librosa
+/// default), not the classic HTK formula.
 /// </summary>
 public sealed class NemotronFeatureExtractor
 {
     private readonly int _nFft;
     private readonly int _hopLength;
-    private readonly int _winLength;
-    private readonly int _nMels;
+    private readonly int _preEncodeCacheSize;
     private readonly float _preemphasis;
-    private readonly float _logZeroGuard;
-    private readonly float[] _window;
+    private readonly float _logEps;
+    private readonly int _pad; // nFft / 2
+    private readonly float[] _window; // length nFft, Hann centered with zero padding on both sides
     private readonly float[][] _melFilterbank; // [nMels][nFft/2+1]
+
+    private float[] _leftContext = [];
+    private float[][] _melCache = [];
 
     public NemotronFeatureExtractor(
         int sampleRate, int nFft, int hopLength, int winLength, int nMels,
-        float fMin, float fMax, float preemphasis, float logZeroGuard)
+        float preemphasis, float logEps, int preEncodeCacheSize)
     {
         _nFft = nFft;
         _hopLength = hopLength;
-        _winLength = winLength;
-        _nMels = nMels;
+        _preEncodeCacheSize = preEncodeCacheSize;
         _preemphasis = preemphasis;
-        _logZeroGuard = logZeroGuard;
-        _window = HannWindow(winLength);
-        _melFilterbank = BuildMelFilterbank(nMels, nFft, sampleRate, fMin, fMax);
+        _logEps = logEps;
+        _pad = nFft / 2;
+
+        _window = new float[nFft];
+        var hann = HannWindow(winLength);
+        var offset = (nFft - winLength) / 2;
+        Array.Copy(hann, 0, _window, offset, winLength);
+
+        _melFilterbank = BuildMelFilterbank(nMels, nFft, sampleRate);
+
+        Reset();
     }
 
-    /// <summary>Computes log-mel features for the given mono PCM samples. Returns [numFrames][nMels].</summary>
-    public float[][] ComputeLogMel(float[] samples)
+    /// <summary>Clears streaming state (left-context audio + mel cache) for a new utterance.</summary>
+    public void Reset()
     {
-        // Pre-emphasis
-        var emphasized = new float[samples.Length];
-        emphasized[0] = samples[0];
-        for (var i = 1; i < samples.Length; i++)
+        _leftContext = new float[_pad];
+        _melCache = new float[_preEncodeCacheSize][];
+        for (var i = 0; i < _preEncodeCacheSize; i++)
         {
-            emphasized[i] = samples[i] - _preemphasis * samples[i - 1];
+            _melCache[i] = new float[_melFilterbank.Length];
+        }
+    }
+
+    /// <summary>
+    /// Computes log-mel features for one fixed-size raw-audio chunk, prefixed with the previous
+    /// chunk's trailing <c>pre_encode_cache_size</c> log-mel frames. Returns
+    /// [pre_encode_cache_size + numNewFrames][nMels].
+    /// </summary>
+    public float[][] ProcessChunk(float[] chunk)
+    {
+        var newFrames = ComputeLogMelChunk(chunk);
+
+        var full = new float[_preEncodeCacheSize + newFrames.Length][];
+        Array.Copy(_melCache, 0, full, 0, _preEncodeCacheSize);
+        Array.Copy(newFrames, 0, full, _preEncodeCacheSize, newFrames.Length);
+
+        _melCache = newFrames.Length >= _preEncodeCacheSize
+            ? newFrames[^_preEncodeCacheSize..]
+            : full[^_preEncodeCacheSize..];
+
+        return full;
+    }
+
+    private float[][] ComputeLogMelChunk(float[] chunk)
+    {
+        var nMels = _melFilterbank.Length;
+
+        // Pre-emphasis across the left-context carried from the previous chunk + this chunk, so
+        // the very first real sample of this chunk is emphasized against real prior audio instead
+        // of a hard zero edge.
+        var x = new double[_leftContext.Length + chunk.Length];
+        Array.Copy(_leftContext, x, _leftContext.Length);
+        for (var i = 0; i < chunk.Length; i++)
+        {
+            x[_leftContext.Length + i] = chunk[i];
         }
 
-        // Center-pad by nFft/2 on both sides so the first frame is centered at sample 0.
-        var pad = _nFft / 2;
-        var padded = new float[emphasized.Length + 2 * pad];
-        Array.Copy(emphasized, 0, padded, pad, emphasized.Length);
+        var emphasized = new double[x.Length];
+        emphasized[0] = x[0];
+        for (var i = 1; i < x.Length; i++)
+        {
+            emphasized[i] = x[i] - _preemphasis * x[i - 1];
+        }
 
-        var numFrames = 1 + Math.Max(0, (padded.Length - _winLength) / _hopLength);
+        var xp = new double[emphasized.Length + _pad];
+        Array.Copy(emphasized, xp, emphasized.Length);
+
+        var numFrames = chunk.Length / _hopLength;
         var frames = new float[numFrames][];
         var fftBuffer = new Complex[_nFft];
 
@@ -56,26 +114,24 @@ public sealed class NemotronFeatureExtractor
         {
             var start = f * _hopLength;
 
-            Array.Clear(fftBuffer, 0, _nFft);
-            for (var i = 0; i < _winLength; i++)
+            for (var i = 0; i < _nFft; i++)
             {
                 var sampleIndex = start + i;
-                var sample = sampleIndex < padded.Length ? padded[sampleIndex] : 0f;
+                var sample = sampleIndex < xp.Length ? xp[sampleIndex] : 0.0;
                 fftBuffer[i] = new Complex(sample * _window[i], 0);
             }
 
             Fft(fftBuffer);
 
             var powerBins = _nFft / 2 + 1;
-            var power = new float[powerBins];
+            var power = new double[powerBins];
             for (var k = 0; k < powerBins; k++)
             {
-                power[k] = (float)fftBuffer[k].Magnitude;
-                power[k] *= power[k]; // mag_power = 2.0
+                power[k] = fftBuffer[k].Magnitude * fftBuffer[k].Magnitude; // mag_power = 2.0
             }
 
-            var mel = new float[_nMels];
-            for (var m = 0; m < _nMels; m++)
+            var mel = new float[nMels];
+            for (var m = 0; m < nMels; m++)
             {
                 double sum = 0;
                 var filter = _melFilterbank[m];
@@ -84,11 +140,14 @@ public sealed class NemotronFeatureExtractor
                     sum += filter[k] * power[k];
                 }
 
-                mel[m] = (float)Math.Log(sum + _logZeroGuard);
+                mel[m] = (float)Math.Log(sum + _logEps);
             }
 
             frames[f] = mel;
         }
+
+        // Carry the tail of the RAW (non-emphasized) chunk forward as next call's left-context.
+        _leftContext = chunk.Length >= _pad ? chunk[^_pad..] : chunk;
 
         return frames;
     }
@@ -104,50 +163,70 @@ public sealed class NemotronFeatureExtractor
         return window;
     }
 
-    private static float[][] BuildMelFilterbank(int nMels, int nFft, int sampleRate, float fMin, float fMax)
+    /// <summary>Slaney mel scale (librosa default), NOT the classic HTK formula.</summary>
+    private static double HzToMelSlaney(double hz)
     {
-        static double HzToMel(double hz) => 2595.0 * Math.Log10(1.0 + hz / 700.0);
-        static double MelToHz(double mel) => 700.0 * (Math.Pow(10.0, mel / 2595.0) - 1.0);
+        const double fSp = 200.0 / 3.0;
+        const double minLogHz = 1000.0;
+        var minLogMel = minLogHz / fSp;
+        var logstep = Math.Log(6.4) / 27.0;
+        return hz >= minLogHz ? minLogMel + Math.Log(Math.Max(hz, 1e-10) / minLogHz) / logstep : hz / fSp;
+    }
 
-        var powerBins = nFft / 2 + 1;
-        var melMin = HzToMel(fMin);
-        var melMax = HzToMel(fMax);
+    private static double MelToHzSlaney(double mel)
+    {
+        const double fSp = 200.0 / 3.0;
+        const double minLogHz = 1000.0;
+        var minLogMel = minLogHz / fSp;
+        var logstep = Math.Log(6.4) / 27.0;
+        return mel >= minLogMel ? minLogHz * Math.Exp(logstep * (mel - minLogMel)) : mel * fSp;
+    }
+
+    /// <summary>Slaney-style triangular mel filterbank with area normalization (librosa defaults).</summary>
+    private static float[][] BuildMelFilterbank(int nMels, int nFft, int sampleRate)
+    {
+        var nFreqs = nFft / 2 + 1;
+        var fftFreqs = new double[nFreqs];
+        for (var k = 0; k < nFreqs; k++)
+        {
+            fftFreqs[k] = k * (sampleRate / 2.0) / (nFreqs - 1);
+        }
 
         var melPoints = new double[nMels + 2];
+        var melMin = HzToMelSlaney(0);
+        var melMax = HzToMelSlaney(sampleRate / 2.0);
         for (var i = 0; i < melPoints.Length; i++)
         {
             melPoints[i] = melMin + (melMax - melMin) * i / (nMels + 1);
         }
 
-        var binPoints = new int[nMels + 2];
-        for (var i = 0; i < melPoints.Length; i++)
+        var melHz = new double[nMels + 2];
+        for (var i = 0; i < melHz.Length; i++)
         {
-            var hz = MelToHz(melPoints[i]);
-            binPoints[i] = (int)Math.Floor((nFft + 1) * hz / sampleRate);
+            melHz[i] = MelToHzSlaney(melPoints[i]);
+        }
+
+        var fdiff = new double[nMels + 1];
+        for (var i = 0; i < fdiff.Length; i++)
+        {
+            fdiff[i] = melHz[i + 1] - melHz[i];
         }
 
         var filterbank = new float[nMels][];
         for (var m = 0; m < nMels; m++)
         {
-            var filter = new float[powerBins];
-            var left = binPoints[m];
-            var center = binPoints[m + 1];
-            var right = binPoints[m + 2];
-
-            for (var k = left; k < center && k < powerBins; k++)
+            var filter = new float[nFreqs];
+            for (var k = 0; k < nFreqs; k++)
             {
-                if (center > left)
-                {
-                    filter[k] = (float)(k - left) / (center - left);
-                }
+                var lower = (melHz[m] - fftFreqs[k]) * -1 / fdiff[m];
+                var upper = (melHz[m + 2] - fftFreqs[k]) / fdiff[m + 1];
+                filter[k] = (float)Math.Max(0, Math.Min(lower, upper));
             }
 
-            for (var k = center; k < right && k < powerBins; k++)
+            var enorm = 2.0 / (melHz[m + 2] - melHz[m]);
+            for (var k = 0; k < nFreqs; k++)
             {
-                if (right > center)
-                {
-                    filter[k] = (float)(right - k) / (right - center);
-                }
+                filter[k] *= (float)enorm;
             }
 
             filterbank[m] = filter;
@@ -194,3 +273,4 @@ public sealed class NemotronFeatureExtractor
         }
     }
 }
+

@@ -323,39 +323,55 @@ far.
 - Not yet wired into DI/endpoints/worker — that lands in Phase 4/5. Native runtime packaging for
   the container (linux-x64) is still an open verification item for Phase 6.
 
-#### Nemotron engine (Phase 3 — done)
+#### Nemotron engine (Phase 3 — done, feature-extraction/lang_id bug fixed post-Phase-8)
 Cache-aware streaming FastConformer-RNNT via raw `Microsoft.ML.OnnxRuntime` (3 chained sessions),
 mirrors `SupertonicTtsEngine`'s multi-session-in-one-class pattern. Exact tensor contract was
 recovered via a throwaway C# spike (`InferenceSession.InputMetadata`/`OutputMetadata`, run with
 `./dotnet.sh run` against the real ONNX graphs) — full details and caveats are in
 [docs/ASR_IMPLEMENTATION_PLAN.md](ASR_IMPLEMENTATION_PLAN.md)'s Phase 3 section, summarized here:
-- **Encoder** (24 layers, hidden=1024): consumes fixed 65-frame log-mel chunks (128 mels; 56 new
-  frames + 9 cached lookback frames), cache-aware via `cache_last_channel`/`cache_last_time`/
-  `cache_last_channel_len` tensors threaded chunk-to-chunk, conditioned by a `lang_id` token that
-  is itself just a vocab index (see below). Emits 7 encoded frames/chunk.
+- **Encoder** (24 layers, hidden=1024): consumes fixed-size log-mel chunks (128 mels; `chunk_samples`
+  raw audio per chunk from `genai_config.json`, prefixed with 9 cached lookback frames), cache-aware
+  via `cache_last_channel`/`cache_last_time`/`cache_last_channel_len` tensors threaded chunk-to-chunk,
+  conditioned by a `lang_id` integer resolved via `Services/NemotronLanguages.cs`'s fixed lookup
+  table (e.g. `0` for English) — **not** a vocab.txt index (see bugfix note below). Emits ~7 encoded
+  frames/chunk.
 - **Decoder/predictor** (`Services/NemotronAsrEngine.cs`'s `RunDecoderStep`): LSTM-based (2 layers,
   hidden=640), not attention-based. Its raw output is (batch, hidden, seq) and must be transposed
   before the joint step.
 - **Joint** (`RunJoint`): combines one encoder frame + one decoder step, argmax over 13088 vocab
-  entries; RNNT greedy decode loop lives in `RunRnntGreedyDecode` (up to `max_symbols_per_step`
-  emissions per encoder frame, stops on `blank_id`).
-- `Services/NemotronVocabulary.cs`: `vocab.txt` (id-per-line) doubles as both the token→text
-  decoder (SentencePiece `▁` convention) and the language-tag→`lang_id` lookup (e.g. `<en-US>`) —
-  no separate tokenizer file needed.
-- `Services/NemotronFeatureExtractor.cs`: self-contained log-mel spectrogram (own radix-2 FFT +
-  triangular mel filterbank + Hann window), no external DSP library.
+  entries (with an optional `blank_penalty` subtracted from the blank logit, default 0); RNNT
+  greedy decode loop lives in `RunRnntGreedyDecode` (up to `max_symbols_per_step` emissions per
+  encoder frame, stops on `blank_id`).
+- `Services/NemotronVocabulary.cs`: `vocab.txt` (id-per-line, identical ordering to
+  `tokenizer.json`'s `model.vocab`) is the token→text decoder only (SentencePiece `▁` convention).
+- `Services/NemotronFeatureExtractor.cs`: self-contained **streaming** log-mel spectrogram (own
+  radix-2 FFT + Slaney-scale mel filterbank with area normalization + Hann window centered within
+  the FFT frame), no external DSP library. Stateful across chunks (`Reset()` per utterance):
+  carries `nFft/2` samples of real left-context audio and the previous chunk's trailing
+  `pre_encode_cache_size` log-mel frames, exactly mirroring how the model was streamed/exported.
 - `Services/WavAudioUtils.cs` gained `ReadMonoFloat(wavBytes, targetSampleRate)` (PCM16 decode +
   linear-interpolation resample to 16kHz mono) alongside the existing duration helper.
-- `config.json`'s `nemotron-3.5` entry also downloads `genai_config.json` now (read at runtime for
-  `blank_id`/`max_symbols_per_step`, NOT for `Microsoft.ML.OnnxRuntimeGenAI` — that library is
-  intentionally not used).
-- **Open risk**: mel-scale formula (HTK vs Slaney) and frame-centering/dither details aren't fully
-  pinned down by config alone. A real-weights smoke test (throwaway harness, real
-  encoder/decoder/joint weights, synthetic sine-tone WAV input) ran the full pipeline **end-to-end
-  successfully with no exceptions** (multi-chunk encoder loop, RNNT greedy decode, vocab decode all
-  executed correctly) — this validates shapes/wiring, but **transcription accuracy is still
-  unverified** since there was no real speech + ground-truth transcript available to check against.
-- Not yet wired into DI/endpoints/worker — Phase 4/5.
+- **All hyperparameters are read from `genai_config.json`** (`num_mels`, `fft_size`, `hop_length`,
+  `win_length`, `preemph`, `log_eps`, `pre_encode_cache_size`, `sample_rate`, `chunk_samples`,
+  `blank_id`, `max_symbols_per_step`, encoder/decoder hidden sizes/layer counts) — **not**
+  `audio_processor_config.json`, which is missing several of these and was only sufficient to keep
+  the pipeline from crashing, not to produce accurate transcriptions.
+
+**Bugfix (post-Phase-8, user-provided reference implementation)**: the original implementation
+produced near-garbage transcripts (~100% WER). Root-caused via real-audio diagnostics (comparing
+encoder output for real speech vs. total silence: cosine similarity ~0.9995, i.e. the encoder was
+almost completely insensitive to actual audio content) after the user supplied a validated
+standalone Python/`onnxruntime`+`numpy`+`soundfile` reference implementation
+(`pyscripts/nemotron_speech_ort_only.py`, extracted from `onnxruntime-genai`'s C++ source). The
+dominant bug: `lang_id` was being resolved from `vocab.txt`'s `<en-US>` tag line index (`2947`)
+instead of the small fixed integer (`0`) the model's language embedding actually expects — feeding
+a wildly out-of-range id into every chunk drowned out the real acoustic signal. Also fixed:
+`log_eps` (`5.96e-08` from `genai_config.json`, not `1e-10` from `audio_processor_config.json`),
+the mel scale (Slaney, not HTK), Hann window centering within the FFT frame (not left-aligned),
+and per-chunk framing/left-context-carry semantics (previously a whole-utterance-at-once STFT).
+**Verified fixed** via the opt-in circular tests: WER dropped from 100% to ~1-2% on multi-sentence
+paragraphs, and a 20-turn, multi-minute conversation transcribed at near-perfect accuracy (297
+words produced vs. 296 reference words, correctly threading cache state across ~80+ chunks).
 
 #### Worker process, DI wiring & SERVER_MODE (Phase 4 — done)
 - **`SERVER_MODE`** env var (`tts` (default) | `asr` | `both`) parsed at the top of `Program.cs`

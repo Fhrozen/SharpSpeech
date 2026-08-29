@@ -34,6 +34,16 @@ public sealed class NemotronAsrTranscriber : IAsrTranscriber, IIdleTrackingTrans
         return Task.FromResult(new TranscriptionResult(text, detectedLanguage, processingTime, audioDuration, text.Length));
     }
 
+    public IStreamingTranscriptionSession CreateStreamingSession(AsrModelDefinition model, string modelDirectory, string? language, bool enableVad)
+    {
+        if (!string.Equals(model.Engine, NemotronEngine, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"NemotronAsrTranscriber cannot handle engine '{model.Engine}'.");
+        }
+
+        return GetOrCreateEngine(model, modelDirectory).CreateStreamingSession(language, enableVad);
+    }
+
     private NemotronAsrEngine GetOrCreateEngine(AsrModelDefinition model, string modelDirectory)
     {
         var cacheKey = $"{model.Name}:{modelDirectory}";

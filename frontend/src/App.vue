@@ -12,6 +12,7 @@ import ParameterControls from './components/ParameterControls.vue'
 import AudioPlayer from './components/AudioPlayer.vue'
 import AudioFileInput from './components/AudioFileInput.vue'
 import TranscriptionResult from './components/TranscriptionResult.vue'
+import LiveTranscription from './components/LiveTranscription.vue'
 import StatusMessage from './components/StatusMessage.vue'
 
 const serverInfo = ref<ServerInfo>({ ttsEnabled: false, asrEnabled: false })
@@ -499,6 +500,16 @@ onMounted(async () => {
             <div v-if="asrError" class="demo-error">
               {{ asrError }}
             </div>
+
+            <div v-if="selectedAsrModel?.supportsStreaming" class="live-section">
+              <hr class="live-divider" />
+              <h3 class="live-heading">Live Transcription</h3>
+              <LiveTranscription
+                :model="asrForm.model"
+                :language="asrForm.language"
+                :enable-vad="asrForm.enableVad"
+              />
+            </div>
           </div>
         </template>
       </div>
@@ -591,6 +602,25 @@ body {
   width: 1rem;
   height: 1rem;
   cursor: pointer;
+}
+
+.live-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.live-divider {
+  border: none;
+  border-top: 1px solid #333333;
+  margin: 0.5rem 0;
+}
+
+.live-heading {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #ffffff;
 }
 
 .demo-output-section {

@@ -22,6 +22,7 @@ public sealed class AsrModelCatalogTests
         Assert.Equal("whisper", whisper!.Engine);
         Assert.True(whisper.SupportsLanguageAutoDetect);
         Assert.False(whisper.SupportsVad);
+        Assert.True(whisper.SupportsStreaming);
         Assert.NotEmpty(whisper.Assets);
         Assert.Contains(whisper.Assets, a => a.RelativePath == whisper.ModelPath);
     }
@@ -35,6 +36,7 @@ public sealed class AsrModelCatalogTests
         Assert.Equal("nemotron-3.5", nemotron!.Engine);
         Assert.True(nemotron.SupportsLanguageAutoDetect);
         Assert.True(nemotron.SupportsVad);
+        Assert.True(nemotron.SupportsStreaming);
         Assert.Contains("en", nemotron.SupportedLanguages);
         Assert.Contains("ja", nemotron.SupportedLanguages);
         Assert.True(nemotron.SupportedLanguages.Count > 10);

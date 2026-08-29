@@ -68,7 +68,8 @@ public sealed class AsrModelCatalog : IAsrModelCatalog
             ],
             SupportedLanguages = [],
             SupportsLanguageAutoDetect = true,
-            SupportsVad = false
+            SupportsVad = false,
+            SupportsStreaming = true
         },
         new()
         {
@@ -99,7 +100,8 @@ public sealed class AsrModelCatalog : IAsrModelCatalog
                 "el", "lt", "lv", "mt", "sl", "he", "th", "nn"
             ],
             SupportsLanguageAutoDetect = true,
-            SupportsVad = true
+            SupportsVad = true,
+            SupportsStreaming = true
         }
     ];
 

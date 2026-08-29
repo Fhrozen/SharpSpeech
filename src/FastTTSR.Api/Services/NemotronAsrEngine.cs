@@ -41,8 +41,19 @@ public sealed class NemotronAsrEngine : IDisposable
     private readonly float _vadThreshold;
     private readonly double _vadSilenceDurationMs;
     private readonly double _vadPrefixPaddingMs;
+    private readonly int _nFft;
+    private readonly int _hopLength;
+    private readonly int _winLength;
+    private readonly int _nMels;
+    private readonly float _preemphasis;
+    private readonly float _logEps;
+    private readonly int _preEncodeCacheSize;
     private SileroVadEngine? _vadEngine;
     private bool _disposed;
+
+    /// <summary>Sample rate raw PCM audio must already be at before <see cref="Transcribe"/> or a
+    /// streaming session sees it.</summary>
+    public int SampleRate => _sampleRate;
 
     public NemotronAsrEngine(string modelDirectory)
     {
@@ -85,16 +96,26 @@ public sealed class NemotronAsrEngine : IDisposable
         _vadSilenceDurationMs = vadCfg.ValueKind == JsonValueKind.Object && vadCfg.TryGetProperty("silence_duration_ms", out var vsd) ? vsd.GetDouble() : 3360;
         _vadPrefixPaddingMs = vadCfg.ValueKind == JsonValueKind.Object && vadCfg.TryGetProperty("prefix_padding_ms", out var vpp) ? vpp.GetDouble() : 560;
 
-        _featureExtractor = new NemotronFeatureExtractor(
-            sampleRate: _sampleRate,
-            nFft: model.GetProperty("fft_size").GetInt32(),
-            hopLength: model.GetProperty("hop_length").GetInt32(),
-            winLength: model.GetProperty("win_length").GetInt32(),
-            nMels: model.GetProperty("num_mels").GetInt32(),
-            preemphasis: model.GetProperty("preemph").GetSingle(),
-            logEps: model.GetProperty("log_eps").GetSingle(),
-            preEncodeCacheSize: model.GetProperty("pre_encode_cache_size").GetInt32());
+        _nFft = model.GetProperty("fft_size").GetInt32();
+        _hopLength = model.GetProperty("hop_length").GetInt32();
+        _winLength = model.GetProperty("win_length").GetInt32();
+        _nMels = model.GetProperty("num_mels").GetInt32();
+        _preemphasis = model.GetProperty("preemph").GetSingle();
+        _logEps = model.GetProperty("log_eps").GetSingle();
+        _preEncodeCacheSize = model.GetProperty("pre_encode_cache_size").GetInt32();
+
+        _featureExtractor = CreateFeatureExtractor();
     }
+
+    private NemotronFeatureExtractor CreateFeatureExtractor() => new(
+        sampleRate: _sampleRate,
+        nFft: _nFft,
+        hopLength: _hopLength,
+        winLength: _winLength,
+        nMels: _nMels,
+        preemphasis: _preemphasis,
+        logEps: _logEps,
+        preEncodeCacheSize: _preEncodeCacheSize);
 
     public (string Text, string? DetectedLanguage) Transcribe(byte[] wavBytes, string? language, bool enableVad = false)
     {
@@ -143,46 +164,57 @@ public sealed class NemotronAsrEngine : IDisposable
             }
 
             var melChunk = _featureExtractor.ProcessChunk(chunk);
-            var totalFrames = melChunk.Length;
-            var nMels = totalFrames > 0 ? melChunk[0].Length : 0;
-
-            var audioSignal = new float[totalFrames * nMels];
-            for (var i = 0; i < totalFrames; i++)
-            {
-                Array.Copy(melChunk[i], 0, audioSignal, i * nMels, nMels);
-            }
-
-            var inputs = new List<NamedOnnxValue>
-            {
-                NamedOnnxValue.CreateFromTensor("audio_signal", new DenseTensor<float>(audioSignal, new[] { 1, totalFrames, nMels })),
-                NamedOnnxValue.CreateFromTensor("length", new DenseTensor<long>(new long[] { totalFrames }, new[] { 1 })),
-                NamedOnnxValue.CreateFromTensor("cache_last_channel", new DenseTensor<float>(cacheLastChannel, new[] { 1, _encoderLayers, _cacheChannelFrames, _encoderHidden })),
-                NamedOnnxValue.CreateFromTensor("cache_last_time", new DenseTensor<float>(cacheLastTime, new[] { 1, _encoderLayers, _encoderHidden, _convContext })),
-                NamedOnnxValue.CreateFromTensor("cache_last_channel_len", new DenseTensor<long>(new long[] { cacheLastChannelLen }, new[] { 1 })),
-                NamedOnnxValue.CreateFromTensor("lang_id", new DenseTensor<long>(new long[] { languageId }, new[] { 1 })),
-            };
-
-            using var results = _encoder.Run(inputs);
-            var outputs = results.First(r => r.Name == "outputs").AsTensor<float>();
-            var encodedLengths = results.First(r => r.Name == "encoded_lengths").AsTensor<long>()[0];
-            cacheLastChannel = results.First(r => r.Name == "cache_last_channel_next").AsTensor<float>().ToArray();
-            cacheLastTime = results.First(r => r.Name == "cache_last_time_next").AsTensor<float>().ToArray();
-            cacheLastChannelLen = results.First(r => r.Name == "cache_last_channel_len_next").AsTensor<long>()[0];
-
-            var validOutputFrames = (int)Math.Min(encodedLengths, outputs.Dimensions[1]);
-            for (var t = 0; t < validOutputFrames; t++)
-            {
-                var frame = new float[_encoderHidden];
-                for (var d = 0; d < _encoderHidden; d++)
-                {
-                    frame[d] = outputs[0, t, d];
-                }
-
-                allOutputs.Add(frame);
-            }
+            allOutputs.AddRange(RunEncoderChunk(melChunk, languageId, ref cacheLastChannel, ref cacheLastTime, ref cacheLastChannelLen));
         }
 
         return allOutputs.ToArray();
+    }
+
+    /// <summary>Runs the encoder on one already-extracted mel chunk, threading the cache tensors
+    /// (by ref) from one call to the next - the reusable primitive shared by both batch
+    /// (<see cref="RunEncoderChunks"/>) and <see cref="StreamingSession"/> decoding.</summary>
+    private float[][] RunEncoderChunk(float[][] melChunk, long languageId, ref float[] cacheLastChannel, ref float[] cacheLastTime, ref long cacheLastChannelLen)
+    {
+        var totalFrames = melChunk.Length;
+        var nMels = totalFrames > 0 ? melChunk[0].Length : 0;
+
+        var audioSignal = new float[totalFrames * nMels];
+        for (var i = 0; i < totalFrames; i++)
+        {
+            Array.Copy(melChunk[i], 0, audioSignal, i * nMels, nMels);
+        }
+
+        var inputs = new List<NamedOnnxValue>
+        {
+            NamedOnnxValue.CreateFromTensor("audio_signal", new DenseTensor<float>(audioSignal, new[] { 1, totalFrames, nMels })),
+            NamedOnnxValue.CreateFromTensor("length", new DenseTensor<long>(new long[] { totalFrames }, new[] { 1 })),
+            NamedOnnxValue.CreateFromTensor("cache_last_channel", new DenseTensor<float>(cacheLastChannel, new[] { 1, _encoderLayers, _cacheChannelFrames, _encoderHidden })),
+            NamedOnnxValue.CreateFromTensor("cache_last_time", new DenseTensor<float>(cacheLastTime, new[] { 1, _encoderLayers, _encoderHidden, _convContext })),
+            NamedOnnxValue.CreateFromTensor("cache_last_channel_len", new DenseTensor<long>(new long[] { cacheLastChannelLen }, new[] { 1 })),
+            NamedOnnxValue.CreateFromTensor("lang_id", new DenseTensor<long>(new long[] { languageId }, new[] { 1 })),
+        };
+
+        using var results = _encoder.Run(inputs);
+        var outputs = results.First(r => r.Name == "outputs").AsTensor<float>();
+        var encodedLengths = results.First(r => r.Name == "encoded_lengths").AsTensor<long>()[0];
+        cacheLastChannel = results.First(r => r.Name == "cache_last_channel_next").AsTensor<float>().ToArray();
+        cacheLastTime = results.First(r => r.Name == "cache_last_time_next").AsTensor<float>().ToArray();
+        cacheLastChannelLen = results.First(r => r.Name == "cache_last_channel_len_next").AsTensor<long>()[0];
+
+        var validOutputFrames = (int)Math.Min(encodedLengths, outputs.Dimensions[1]);
+        var frames = new float[validOutputFrames][];
+        for (var t = 0; t < validOutputFrames; t++)
+        {
+            var frame = new float[_encoderHidden];
+            for (var d = 0; d < _encoderHidden; d++)
+            {
+                frame[d] = outputs[0, t, d];
+            }
+
+            frames[t] = frame;
+        }
+
+        return frames;
     }
 
     private SileroVadEngine GetOrCreateVadEngine() =>
@@ -195,26 +227,37 @@ public sealed class NemotronAsrEngine : IDisposable
         var hState = new float[_decoderLayers * _decoderHidden];
         var cState = new float[_decoderLayers * _decoderHidden];
 
-        foreach (var encoderFrame in encoderOutputs)
+        foreach (var frame in encoderOutputs)
         {
-            var symbolsThisFrame = 0;
+            tokenIds.AddRange(DecodeFrame(frame, ref lastToken, ref hState, ref cState));
+        }
 
-            while (symbolsThisFrame < _maxSymbolsPerStep)
+        return tokenIds;
+    }
+
+    /// <summary>Greedily decodes one encoder frame, threading the RNNT predictor's LSTM state (by
+    /// ref) from one call to the next - the reusable primitive shared by both batch
+    /// (<see cref="RunRnntGreedyDecode"/>) and <see cref="StreamingSession"/> decoding.</summary>
+    private List<int> DecodeFrame(float[] encoderFrame, ref long lastToken, ref float[] hState, ref float[] cState)
+    {
+        var tokenIds = new List<int>();
+        var symbolsThisFrame = 0;
+
+        while (symbolsThisFrame < _maxSymbolsPerStep)
+        {
+            var (decoderOutput, hOut, cOut) = RunDecoderStep(lastToken, hState, cState);
+            var predicted = RunJoint(encoderFrame, decoderOutput);
+
+            if (predicted == _blankId)
             {
-                var (decoderOutput, hOut, cOut) = RunDecoderStep(lastToken, hState, cState);
-                var predicted = RunJoint(encoderFrame, decoderOutput);
-
-                if (predicted == _blankId)
-                {
-                    break;
-                }
-
-                tokenIds.Add((int)predicted);
-                lastToken = predicted;
-                hState = hOut;
-                cState = cOut;
-                symbolsThisFrame++;
+                break;
             }
+
+            tokenIds.Add((int)predicted);
+            lastToken = predicted;
+            hState = hOut;
+            cState = cOut;
+            symbolsThisFrame++;
         }
 
         return tokenIds;
@@ -288,5 +331,143 @@ public sealed class NemotronAsrEngine : IDisposable
         _joint.Dispose();
         _vadEngine?.Dispose();
         _disposed = true;
+    }
+
+    /// <summary>Creates a stateful streaming session - a fresh feature extractor and cache/decoder
+    /// state, plus a dedicated VAD engine if requested (never the shared <see cref="_vadEngine"/>,
+    /// since its internal LSTM state can't safely be shared across concurrent sessions).</summary>
+    public StreamingSession CreateStreamingSession(string? language, bool enableVad) =>
+        new(this, NemotronLanguages.Resolve(language), enableVad);
+
+    /// <summary>
+    /// Incremental cache-aware streaming session - mirrors the Python reference's
+    /// NemotronOrtPipeline.process_chunk (encoder + greedy RNNT decode per chunk, threading cache/
+    /// decoder state across calls) rather than <see cref="Transcribe"/>'s whole-utterance-at-once
+    /// batch call. As a nested class it can reach the outer engine's private ONNX sessions and
+    /// per-chunk primitives directly.
+    /// </summary>
+    public sealed class StreamingSession : IStreamingTranscriptionSession
+    {
+        private readonly NemotronAsrEngine _engine;
+        private readonly long _languageId;
+        private readonly NemotronFeatureExtractor _featureExtractor;
+        private readonly SileroVadEngine? _vadEngine;
+        private readonly SileroVadGate? _vadGate;
+        private readonly List<byte> _pending = [];
+        private readonly List<int> _tokenIds = [];
+
+        private float[] _cacheLastChannel;
+        private float[] _cacheLastTime;
+        private long _cacheLastChannelLen;
+        private long _lastToken;
+        private float[] _hState;
+        private float[] _cState;
+        private bool _finished;
+
+        internal StreamingSession(NemotronAsrEngine engine, long languageId, bool enableVad)
+        {
+            _engine = engine;
+            _languageId = languageId;
+            _featureExtractor = engine.CreateFeatureExtractor();
+
+            _cacheLastChannel = new float[engine._encoderLayers * engine._cacheChannelFrames * engine._encoderHidden];
+            _cacheLastTime = new float[engine._encoderLayers * engine._encoderHidden * engine._convContext];
+            _cacheLastChannelLen = 0;
+
+            _lastToken = engine._blankId;
+            _hState = new float[engine._decoderLayers * engine._decoderHidden];
+            _cState = new float[engine._decoderLayers * engine._decoderHidden];
+
+            if (enableVad)
+            {
+                _vadEngine = new SileroVadEngine(Path.Combine(engine._modelDirectory, engine._vadFilename), engine._sampleRate);
+                _vadGate = new SileroVadGate(_vadEngine, engine._vadThreshold, engine._chunkSamples, engine._sampleRate, engine._vadSilenceDurationMs, engine._vadPrefixPaddingMs);
+            }
+        }
+
+        public int SampleRate => _engine._sampleRate;
+
+        public Task<string?> ProcessChunkAsync(byte[] pcm16Chunk, CancellationToken cancellationToken)
+        {
+            if (_finished)
+            {
+                return Task.FromResult<string?>(null);
+            }
+
+            _pending.AddRange(pcm16Chunk);
+            var chunkByteSize = _engine._chunkSamples * 2;
+            var producedNewTokens = false;
+
+            while (_pending.Count >= chunkByteSize)
+            {
+                var chunkBytes = _pending.GetRange(0, chunkByteSize).ToArray();
+                _pending.RemoveRange(0, chunkByteSize);
+
+                if (DecodeOneChunk(BytesToFloatSamples(chunkBytes, _engine._chunkSamples)))
+                {
+                    producedNewTokens = true;
+                }
+            }
+
+            return Task.FromResult(producedNewTokens ? _engine._vocabulary.Decode(_tokenIds) : null);
+        }
+
+        public Task<string> FinishAsync(CancellationToken cancellationToken)
+        {
+            if (!_finished && _pending.Count > 0)
+            {
+                // Right-pad the trailing partial chunk with zeros, same as the batch path's last chunk.
+                var chunk = new float[_engine._chunkSamples];
+                var availableSamples = _pending.Count / 2;
+                var pendingBytes = _pending.ToArray();
+                for (var i = 0; i < availableSamples; i++)
+                {
+                    chunk[i] = BitConverter.ToInt16(pendingBytes, i * 2) / 32768f;
+                }
+
+                DecodeOneChunk(chunk);
+                _pending.Clear();
+            }
+
+            _finished = true;
+            return Task.FromResult(_engine._vocabulary.Decode(_tokenIds));
+        }
+
+        private bool DecodeOneChunk(float[] chunk)
+        {
+            if (_vadGate?.ShouldDropChunk(chunk) == true)
+            {
+                return false;
+            }
+
+            var melChunk = _featureExtractor.ProcessChunk(chunk);
+            var frames = _engine.RunEncoderChunk(melChunk, _languageId, ref _cacheLastChannel, ref _cacheLastTime, ref _cacheLastChannelLen);
+
+            var producedNewTokens = false;
+            foreach (var frame in frames)
+            {
+                var newTokens = _engine.DecodeFrame(frame, ref _lastToken, ref _hState, ref _cState);
+                if (newTokens.Count > 0)
+                {
+                    _tokenIds.AddRange(newTokens);
+                    producedNewTokens = true;
+                }
+            }
+
+            return producedNewTokens;
+        }
+
+        private static float[] BytesToFloatSamples(byte[] pcm16Bytes, int sampleCount)
+        {
+            var samples = new float[sampleCount];
+            for (var i = 0; i < sampleCount; i++)
+            {
+                samples[i] = BitConverter.ToInt16(pcm16Bytes, i * 2) / 32768f;
+            }
+
+            return samples;
+        }
+
+        public void Dispose() => _vadEngine?.Dispose();
     }
 }

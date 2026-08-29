@@ -34,6 +34,16 @@ public sealed class WhisperAsrTranscriber : IAsrTranscriber, IIdleTrackingTransc
         return new TranscriptionResult(text, detectedLanguage, processingTime, audioDuration, text.Length);
     }
 
+    public IStreamingTranscriptionSession CreateStreamingSession(AsrModelDefinition model, string modelDirectory, string? language)
+    {
+        if (!string.Equals(model.Engine, WhisperEngine, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"WhisperAsrTranscriber cannot handle engine '{model.Engine}'.");
+        }
+
+        return new WhisperStreamingSession(GetOrCreateEngine(model, modelDirectory), language);
+    }
+
     private WhisperAsrEngine GetOrCreateEngine(AsrModelDefinition model, string modelDirectory)
     {
         var cacheKey = $"{model.Name}:{modelDirectory}";

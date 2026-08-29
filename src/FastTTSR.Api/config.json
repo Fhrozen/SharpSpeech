@@ -92,7 +92,8 @@
       ],
       "supportedLanguages": [],
       "supportsLanguageAutoDetect": true,
-      "supportsVad": false
+      "supportsVad": false,
+      "supportsStreaming": true
     },
     {
       "name": "nemotron-3.5",
@@ -120,7 +121,8 @@
         "el", "lt", "lv", "mt", "sl", "he", "th", "nn"
       ],
       "supportsLanguageAutoDetect": true,
-      "supportsVad": true
+      "supportsVad": true,
+      "supportsStreaming": true
     }
   ]
 }

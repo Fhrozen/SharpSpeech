@@ -59,17 +59,22 @@ public static class WavAudioUtils
             pcm[i * 2 + 1] = bytes[1];
         }
 
-        using var stream = new MemoryStream(44 + pcm.Length);
+        return WrapPcm16MonoAsWav(pcm, sampleRate: 16000);
+    }
+
+    /// <summary>Wraps raw 16-bit PCM mono samples in a minimal RIFF/WAV header.</summary>
+    public static byte[] WrapPcm16MonoAsWav(byte[] pcmBytes, int sampleRate)
+    {
+        using var stream = new MemoryStream(44 + pcmBytes.Length);
         using var writer = new BinaryWriter(stream);
 
-        const int sampleRate = 16000;
         const short channels = 1;
         const short bitsPerSample = 16;
         var byteRate = sampleRate * channels * bitsPerSample / 8;
         var blockAlign = (short)(channels * bitsPerSample / 8);
 
         writer.Write("RIFF"u8.ToArray());
-        writer.Write(36 + pcm.Length);
+        writer.Write(36 + pcmBytes.Length);
         writer.Write("WAVE"u8.ToArray());
         writer.Write("fmt "u8.ToArray());
         writer.Write(16);
@@ -80,8 +85,8 @@ public static class WavAudioUtils
         writer.Write(blockAlign);
         writer.Write(bitsPerSample);
         writer.Write("data"u8.ToArray());
-        writer.Write(pcm.Length);
-        writer.Write(pcm);
+        writer.Write(pcmBytes.Length);
+        writer.Write(pcmBytes);
 
         return stream.ToArray();
     }

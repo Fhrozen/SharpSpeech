@@ -9,10 +9,12 @@ namespace FastTTSR.Api.Contracts;
 /// <param name="SupportedLanguages">List of supported language codes</param>
 /// <param name="SupportsLanguageAutoDetect">Whether the model can auto-detect the spoken language</param>
 /// <param name="SupportsVad">Whether the model supports voice-activity-detection gating (skips inference on silent audio chunks)</param>
+/// <param name="SupportsStreaming">Whether the model supports live streaming transcription over WebSocket</param>
 public sealed record AsrModelDefinitionResponse(
     string Name,
     string DisplayName,
     string Description,
     IReadOnlyList<string> SupportedLanguages,
     bool SupportsLanguageAutoDetect,
-    bool SupportsVad);
+    bool SupportsVad,
+    bool SupportsStreaming);

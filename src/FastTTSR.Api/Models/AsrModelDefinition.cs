@@ -11,4 +11,5 @@ public sealed class AsrModelDefinition
     public IReadOnlyList<string> SupportedLanguages { get; init; } = [];
     public bool SupportsLanguageAutoDetect { get; init; }
     public bool SupportsVad { get; init; }
+    public bool SupportsStreaming { get; init; }
 }

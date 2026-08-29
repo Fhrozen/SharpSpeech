@@ -47,6 +47,7 @@ export interface AsrModel {
   supportedLanguages: string[]
   supportsLanguageAutoDetect: boolean
   supportsVad: boolean
+  supportsStreaming: boolean
 }
 
 export interface TranscriptionMetrics {
@@ -59,4 +60,9 @@ export interface TranscriptionMetrics {
 export interface ServerInfo {
   ttsEnabled: boolean
   asrEnabled: boolean
+}
+
+export interface StreamMessage {
+  type: 'partial' | 'final'
+  text: string
 }

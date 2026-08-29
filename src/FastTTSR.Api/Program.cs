@@ -1,6 +1,9 @@
 using FastTTSR.Api.Contracts;
 using FastTTSR.Api.Options;
 using FastTTSR.Api.Services;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -133,6 +136,7 @@ app.UseSwaggerUI(options =>
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.UseWebSockets();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }))
     .WithName("HealthCheck")
@@ -384,7 +388,8 @@ app.MapGet("/api/asr-models", (IAsrModelCatalog asrModelCatalog) =>
         m.Description,
         m.SupportedLanguages,
         m.SupportsLanguageAutoDetect,
-        m.SupportsVad));
+        m.SupportsVad,
+        m.SupportsStreaming));
 
     return Results.Ok(models);
 })
@@ -469,10 +474,142 @@ app.MapPost("/v1/audio/transcriptions", async (
     .Produces<object>(200)
     .Produces<ErrorResponse>(400)
     .Produces<ErrorResponse>(404);
+
+app.MapGet("/v1/audio/transcriptions/stream", async (
+    HttpContext httpContext,
+    IAsrModelCatalog asrModelCatalog,
+    IModelCache modelCache,
+    CancellationToken cancellationToken) =>
+{
+    if (!httpContext.WebSockets.IsWebSocketRequest)
+    {
+        httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
+        await httpContext.Response.WriteAsync("Expected a WebSocket upgrade request.", cancellationToken);
+        return;
+    }
+
+    var modelName = httpContext.Request.Query["model"].ToString();
+    var language = httpContext.Request.Query["language"].ToString();
+    var useVadRaw = httpContext.Request.Query["use_vad"].ToString();
+    var enableVad = string.Equals(useVadRaw, "true", StringComparison.OrdinalIgnoreCase) || useVadRaw == "1";
+
+    if (string.IsNullOrWhiteSpace(modelName) || !asrModelCatalog.TryGetModel(modelName, out var model))
+    {
+        httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+        await httpContext.Response.WriteAsync("The requested model was not found.", cancellationToken);
+        return;
+    }
+
+    // v1 scope: streaming only works in-process (AsrWorkerOptions__Enabled=false) - the worker
+    // gRPC protocol has no streaming RPCs yet, so these singletons simply aren't registered when
+    // ASR runs in worker mode.
+    var whisperTranscriber = httpContext.RequestServices.GetService<WhisperAsrTranscriber>();
+    var nemotronTranscriber = httpContext.RequestServices.GetService<NemotronAsrTranscriber>();
+
+    IStreamingTranscriptionSession? session = null;
+    var resolvedLanguage = string.IsNullOrWhiteSpace(language) ? null : language;
+
+    if (string.Equals(model!.Engine, "nemotron-3.5", StringComparison.OrdinalIgnoreCase) && nemotronTranscriber is not null)
+    {
+        var modelDirectory = await modelCache.EnsureModelAsync(model, cancellationToken);
+        session = nemotronTranscriber.CreateStreamingSession(model, modelDirectory, resolvedLanguage, enableVad);
+    }
+    else if (whisperTranscriber is not null)
+    {
+        var modelDirectory = await modelCache.EnsureModelAsync(model, cancellationToken);
+        session = whisperTranscriber.CreateStreamingSession(model, modelDirectory, resolvedLanguage);
+    }
+
+    if (session is null)
+    {
+        httpContext.Response.StatusCode = StatusCodes.Status501NotImplemented;
+        await httpContext.Response.WriteAsync(
+            "Streaming transcription requires in-process ASR mode (AsrWorkerOptions__Enabled=false).", cancellationToken);
+        return;
+    }
+
+    using var _ = session;
+    using var webSocket = await httpContext.WebSockets.AcceptWebSocketAsync();
+    await RunStreamingTranscriptionAsync(webSocket, session, cancellationToken);
+})
+    .WithName("StreamTranscription")
+    .WithTags("OpenAI Compatible")
+    .WithSummary("Stream live speech-to-text over WebSocket")
+    .WithDescription("WebSocket upgrade endpoint for real-time transcription. Query params: model (required), " +
+        "language (optional), use_vad (optional, nemotron-3.5 only). After upgrading, send binary WebSocket " +
+        "frames of raw 16-bit PCM mono audio at 16kHz (no WAV/container header) - client-captured microphone " +
+        "or tab/system audio must be resampled to this format before sending. The server replies with JSON " +
+        "text frames `{\"type\":\"partial\",\"text\":\"...\"}` as transcript text becomes available (each " +
+        "message carries the full transcript-so-far, not just a delta - simply replace the displayed text). " +
+        "Nemotron uses true cache-aware incremental decoding; Whisper has no incremental API and instead " +
+        "periodically re-transcribes the whole buffered audio so far. Send a text frame `{\"type\":\"end\"}` " +
+        "(or close the socket) to finish - the server replies once more with " +
+        "`{\"type\":\"final\",\"text\":\"...\"}` before closing. Requires in-process ASR mode " +
+        "(AsrWorkerOptions__Enabled=false) - returns 501 otherwise. Swagger UI cannot exercise WebSocket " +
+        "endpoints via \"Try it out\"; this description documents the protocol only.");
 }
 
 app.MapFallbackToFile("/index.html");
 
 app.Run();
+
+static async Task RunStreamingTranscriptionAsync(WebSocket webSocket, IStreamingTranscriptionSession session, CancellationToken cancellationToken)
+{
+    var receiveBuffer = new byte[16 * 1024];
+
+    while (webSocket.State == WebSocketState.Open)
+    {
+        using var messageStream = new MemoryStream();
+        WebSocketReceiveResult result;
+
+        do
+        {
+            result = await webSocket.ReceiveAsync(receiveBuffer, cancellationToken);
+            if (result.MessageType == WebSocketMessageType.Close)
+            {
+                break;
+            }
+
+            messageStream.Write(receiveBuffer, 0, result.Count);
+        }
+        while (!result.EndOfMessage);
+
+        if (result.MessageType == WebSocketMessageType.Close)
+        {
+            break;
+        }
+
+        if (result.MessageType == WebSocketMessageType.Text)
+        {
+            var text = Encoding.UTF8.GetString(messageStream.ToArray());
+            if (text.Contains("\"end\"", StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            continue;
+        }
+
+        var updatedText = await session.ProcessChunkAsync(messageStream.ToArray(), cancellationToken);
+        if (updatedText is not null)
+        {
+            await SendJsonAsync(webSocket, new { type = "partial", text = updatedText }, cancellationToken);
+        }
+    }
+
+    var finalText = await session.FinishAsync(cancellationToken);
+    await SendJsonAsync(webSocket, new { type = "final", text = finalText }, cancellationToken);
+
+    if (webSocket.State == WebSocketState.Open)
+    {
+        await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", CancellationToken.None);
+    }
+}
+
+static async Task SendJsonAsync(WebSocket webSocket, object payload, CancellationToken cancellationToken)
+{
+    var bytes = JsonSerializer.SerializeToUtf8Bytes(payload);
+    await webSocket.SendAsync(bytes, WebSocketMessageType.Text, endOfMessage: true, cancellationToken);
+}
 
 public partial class Program;

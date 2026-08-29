@@ -36,10 +36,17 @@ public sealed class NemotronAsrEngine : IDisposable
     private readonly long _blankId;
     private readonly int _maxSymbolsPerStep;
     private readonly float _blankPenalty;
+    private readonly string _modelDirectory;
+    private readonly string _vadFilename;
+    private readonly float _vadThreshold;
+    private readonly double _vadSilenceDurationMs;
+    private readonly double _vadPrefixPaddingMs;
+    private SileroVadEngine? _vadEngine;
     private bool _disposed;
 
     public NemotronAsrEngine(string modelDirectory)
     {
+        _modelDirectory = modelDirectory;
         var options = new Microsoft.ML.OnnxRuntime.SessionOptions { LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR };
         _encoder = new InferenceSession(Path.Combine(modelDirectory, "encoder.onnx"), options);
         _decoder = new InferenceSession(Path.Combine(modelDirectory, "decoder.onnx"), options);
@@ -68,6 +75,16 @@ public sealed class NemotronAsrEngine : IDisposable
         _decoderHidden = decoderCfg.GetProperty("hidden_size").GetInt32();
         _decoderLayers = decoderCfg.GetProperty("num_hidden_layers").GetInt32();
 
+        // Defaults mirror the Python reference's NemotronConfig.vad_* fallbacks for models/configs
+        // that predate the "vad" section.
+        var vadCfg = model.TryGetProperty("vad", out var vadEl) ? vadEl : default;
+        _vadFilename = vadCfg.ValueKind == JsonValueKind.Object && vadCfg.TryGetProperty("filename", out var vf)
+            ? vf.GetString() ?? "silero_vad.onnx"
+            : "silero_vad.onnx";
+        _vadThreshold = vadCfg.ValueKind == JsonValueKind.Object && vadCfg.TryGetProperty("threshold", out var vt) ? vt.GetSingle() : 0.5f;
+        _vadSilenceDurationMs = vadCfg.ValueKind == JsonValueKind.Object && vadCfg.TryGetProperty("silence_duration_ms", out var vsd) ? vsd.GetDouble() : 3360;
+        _vadPrefixPaddingMs = vadCfg.ValueKind == JsonValueKind.Object && vadCfg.TryGetProperty("prefix_padding_ms", out var vpp) ? vpp.GetDouble() : 560;
+
         _featureExtractor = new NemotronFeatureExtractor(
             sampleRate: _sampleRate,
             nFft: model.GetProperty("fft_size").GetInt32(),
@@ -79,12 +96,12 @@ public sealed class NemotronAsrEngine : IDisposable
             preEncodeCacheSize: model.GetProperty("pre_encode_cache_size").GetInt32());
     }
 
-    public (string Text, string? DetectedLanguage) Transcribe(byte[] wavBytes, string? language)
+    public (string Text, string? DetectedLanguage) Transcribe(byte[] wavBytes, string? language, bool enableVad = false)
     {
         var samples = WavAudioUtils.ReadMonoFloat(wavBytes, _sampleRate);
         var languageId = NemotronLanguages.Resolve(language);
 
-        var encoderOutputs = RunEncoderChunks(samples, languageId);
+        var encoderOutputs = RunEncoderChunks(samples, languageId, enableVad);
         var tokenIds = RunRnntGreedyDecode(encoderOutputs);
 
         var text = _vocabulary.Decode(tokenIds, out var languageTag);
@@ -95,9 +112,17 @@ public sealed class NemotronAsrEngine : IDisposable
         return (text, detectedLanguage);
     }
 
-    private float[][] RunEncoderChunks(float[] samples, long languageId)
+    private float[][] RunEncoderChunks(float[] samples, long languageId, bool enableVad)
     {
         _featureExtractor.Reset();
+
+        SileroVadGate? vadGate = null;
+        if (enableVad)
+        {
+            var vadEngine = GetOrCreateVadEngine();
+            vadEngine.Reset();
+            vadGate = new SileroVadGate(vadEngine, _vadThreshold, _chunkSamples, _sampleRate, _vadSilenceDurationMs, _vadPrefixPaddingMs);
+        }
 
         var cacheLastChannel = new float[_encoderLayers * _cacheChannelFrames * _encoderHidden];
         var cacheLastTime = new float[_encoderLayers * _encoderHidden * _convContext];
@@ -111,6 +136,11 @@ public sealed class NemotronAsrEngine : IDisposable
             var available = Math.Min(_chunkSamples, samples.Length - offset);
             Array.Copy(samples, offset, chunk, 0, available);
             // Remaining entries stay zero (right-padding the final, possibly-short chunk).
+
+            if (vadGate?.ShouldDropChunk(chunk) == true)
+            {
+                continue; // skip encoder/decoder inference for a chunk classified as silence
+            }
 
             var melChunk = _featureExtractor.ProcessChunk(chunk);
             var totalFrames = melChunk.Length;
@@ -154,6 +184,9 @@ public sealed class NemotronAsrEngine : IDisposable
 
         return allOutputs.ToArray();
     }
+
+    private SileroVadEngine GetOrCreateVadEngine() =>
+        _vadEngine ??= new SileroVadEngine(Path.Combine(_modelDirectory, _vadFilename), _sampleRate);
 
     private List<int> RunRnntGreedyDecode(float[][] encoderOutputs)
     {
@@ -253,6 +286,7 @@ public sealed class NemotronAsrEngine : IDisposable
         _encoder.Dispose();
         _decoder.Dispose();
         _joint.Dispose();
+        _vadEngine?.Dispose();
         _disposed = true;
     }
 }

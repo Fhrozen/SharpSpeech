@@ -26,7 +26,7 @@ public sealed class NemotronAsrTranscriber : IAsrTranscriber, IIdleTrackingTrans
         var startTime = DateTime.UtcNow;
         var engine = GetOrCreateEngine(model, modelDirectory);
 
-        var (text, detectedLanguage) = engine.Transcribe(audioBytes, request.Language);
+        var (text, detectedLanguage) = engine.Transcribe(audioBytes, request.Language, request.EnableVad);
 
         var processingTime = (DateTime.UtcNow - startTime).TotalSeconds;
         var audioDuration = WavAudioUtils.GetDurationSeconds(audioBytes);

@@ -152,14 +152,16 @@ GET /api/asr-models
     "displayName": "Whisper Base",
     "description": "OpenAI Whisper base multilingual model (GGML), run via whisper.cpp.",
     "supportedLanguages": [],
-    "supportsLanguageAutoDetect": true
+    "supportsLanguageAutoDetect": true,
+    "supportsVad": false
   },
   {
     "name": "nemotron-3.5",
     "displayName": "Nemotron 3.5 ASR",
     "description": "NVIDIA Nemotron 3.5 streaming ASR (cache-aware FastConformer-RNNT, INT4 ONNX).",
     "supportedLanguages": ["en", "es", "fr", "it", "pt", "nl", "de", "tr", "ru", "ar", "hi", "ja", "ko", ".."],
-    "supportsLanguageAutoDetect": true
+    "supportsLanguageAutoDetect": true,
+    "supportsVad": true
   }
 ]
 ```
@@ -327,8 +329,9 @@ response_format=json (optional, currently the only supported value)
 |-------|----------|---------|--------------|
 | `file` | **Yes** | - | Audio file to transcribe. Any format `ffmpeg` can decode (WAV, FLAC, MP3, OGG, WEBM, M4A, etc.) - normalized server-side to PCM16 mono WAV before either engine sees it |
 | `model` | **Yes** | - | Model ID (`whisper-base`, `nemotron-3.5`) |
-| `language` | No | Auto-detect | ISO language code hint (e.g. `en`, `ja`); both models support auto-detection if omitted |
+| `language` | No | Auto-detect | ISO language code hint (e.g. `en`, `ja`), or `auto` to explicitly request auto-detection; both models support auto-detection if omitted |
 | `response_format` | No | `json` | Currently only `json` is implemented |
+| `use_vad` | No | `false` | `true`/`1` to enable voice-activity-detection gating (skips inference on silent audio chunks) - only affects `nemotron-3.5` (`supportsVad: true`); ignored by models that don't support it |
 
 **Response:**
 ```json

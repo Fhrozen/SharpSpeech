@@ -21,6 +21,7 @@ public sealed class AsrModelCatalogTests
         Assert.True(catalog.TryGetModel("whisper-base", out var whisper));
         Assert.Equal("whisper", whisper!.Engine);
         Assert.True(whisper.SupportsLanguageAutoDetect);
+        Assert.False(whisper.SupportsVad);
         Assert.NotEmpty(whisper.Assets);
         Assert.Contains(whisper.Assets, a => a.RelativePath == whisper.ModelPath);
     }
@@ -33,6 +34,7 @@ public sealed class AsrModelCatalogTests
         Assert.True(catalog.TryGetModel("nemotron-3.5", out var nemotron));
         Assert.Equal("nemotron-3.5", nemotron!.Engine);
         Assert.True(nemotron.SupportsLanguageAutoDetect);
+        Assert.True(nemotron.SupportsVad);
         Assert.Contains("en", nemotron.SupportedLanguages);
         Assert.Contains("ja", nemotron.SupportedLanguages);
         Assert.True(nemotron.SupportedLanguages.Count > 10);

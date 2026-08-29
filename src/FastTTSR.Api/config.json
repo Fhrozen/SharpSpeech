@@ -91,7 +91,8 @@
         }
       ],
       "supportedLanguages": [],
-      "supportsLanguageAutoDetect": true
+      "supportsLanguageAutoDetect": true,
+      "supportsVad": false
     },
     {
       "name": "nemotron-3.5",
@@ -118,7 +119,8 @@
         "pl", "sv", "cs", "nb", "da", "bg", "fi", "hr", "sk", "zh", "hu", "ro", "et",
         "el", "lt", "lv", "mt", "sl", "he", "th", "nn"
       ],
-      "supportsLanguageAutoDetect": true
+      "supportsLanguageAutoDetect": true,
+      "supportsVad": true
     }
   ]
 }

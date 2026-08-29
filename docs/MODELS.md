@@ -207,10 +207,10 @@ the request.
 
 ### Overview
 
-| Model | Engine | Languages | Auto-Detect | Notes |
-|-------|--------|-----------|--------------|-------|
-| `whisper-base` | Whisper.net (whisper.cpp/GGML) | Multilingual | ✅ | Whole-file batch transcription, requires 16kHz mono input (resampled automatically) |
-| `nemotron-3.5` | Raw ONNX Runtime (FastConformer-RNNT) | 35+ | ✅ | Cache-aware streaming architecture, chunked internally |
+| Model | Engine | Languages | Auto-Detect | VAD | Notes |
+|-------|--------|-----------|--------------|-----|-------|
+| `whisper-base` | Whisper.net (whisper.cpp/GGML) | Multilingual | ✅ | ❌ | Whole-file batch transcription, requires 16kHz mono input (resampled automatically) |
+| `nemotron-3.5` | Raw ONNX Runtime (FastConformer-RNNT) | 35+ | ✅ | ✅ | Cache-aware streaming architecture, chunked internally |
 
 ### Whisper Base
 
@@ -247,6 +247,12 @@ Segment-by-segment transcription → Concatenated text
   size, `lang_id` mapping) are sourced from `genai_config.json`, ported from a validated
   Python/onnxruntime reference implementation and confirmed accurate via real-audio circular
   tests (~1-2% WER on multi-sentence paragraphs, near-perfect on a 20-turn conversation)
+- **Voice-activity detection (VAD):** optional, opt-in via the `use_vad` form field
+  (`supportsVad: true`). Uses the bundled `silero_vad.onnx` asset (`Services/SileroVadEngine.cs` +
+  `Services/SileroVadGate.cs`, ported from the Python reference's `SileroVadOrt`/`VadGate`) to
+  skip encoder/decoder inference on chunks classified as silence after enough consecutive silent
+  chunks accumulate (thresholds from `genai_config.json`'s `vad` section) - reduces compute on
+  audio with long silences without changing the transcript for chunks that do contain speech.
 
 **Download URL (source):**
 - `https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4`

@@ -120,6 +120,27 @@ public class AsrCircularTests
         Assert.False(string.IsNullOrWhiteSpace(transcript), "FLAC upload produced an empty transcript.");
     }
 
+    [SkippableFact]
+    public async Task Offline_NemotronWithVad_TranscribesWithoutCrashing()
+    {
+        Skip.IfNot(AsrModelTestGate.IsEnabled, AsrModelTestGate.SkipReason);
+
+        var sample = Corpus.Samples.FirstOrDefault(s => s.Type == "long") ?? Corpus.Samples.First();
+        using var factory = CreateFactory();
+        var client = factory.CreateClient();
+
+        var wavBytes = await SynthesizeAsync(client, sample.Text, sample.Speaker ?? "F1");
+        var transcript = await TranscribeAsync(client, wavBytes, "nemotron-3.5", enableVad: true);
+        var wer = WordErrorRate.Compute(sample.Text, transcript);
+
+        _output.WriteLine($"[nemotron-3.5 + VAD] sample={sample.Id} WER={wer:P0}");
+        _output.WriteLine($"  reference:  \"{sample.Text}\"");
+        _output.WriteLine($"  transcript: \"{transcript}\"");
+
+        Assert.False(string.IsNullOrWhiteSpace(transcript), "VAD-enabled Nemotron transcription produced an empty transcript.");
+        Assert.True(wer <= 0.9, $"VAD-enabled Nemotron WER {wer:P0} too high for sample '{sample.Id}'.");
+    }
+
     public static IEnumerable<object[]> AsrModelNames() => AsrModels.Select(m => new object[] { m });
 
     private static WebApplicationFactory<Program> CreateFactory()
@@ -145,13 +166,17 @@ public class AsrCircularTests
         return await response.Content.ReadAsByteArrayAsync();
     }
 
-    private static async Task<string> TranscribeAsync(HttpClient client, byte[] audioBytes, string asrModel, string fileName = "sample.wav", string contentType = "audio/wav")
+    private static async Task<string> TranscribeAsync(HttpClient client, byte[] audioBytes, string asrModel, string fileName = "sample.wav", string contentType = "audio/wav", bool enableVad = false)
     {
         using var content = new MultipartFormDataContent();
         var audioContent = new ByteArrayContent(audioBytes);
         audioContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
         content.Add(audioContent, "file", fileName);
         content.Add(new StringContent(asrModel), "model");
+        if (enableVad)
+        {
+            content.Add(new StringContent("true"), "use_vad");
+        }
 
         var response = await client.PostAsync("/v1/audio/transcriptions", content);
         response.EnsureSuccessStatusCode();

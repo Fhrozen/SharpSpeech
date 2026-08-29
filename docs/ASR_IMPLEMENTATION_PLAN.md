@@ -65,7 +65,7 @@
 | 9 | Documentation update (final) | ✅ Done (awaiting acceptance) |
 | 10 | Nemotron auto-detect-language fix | ✅ Done (awaiting acceptance) |
 | 11 | Universal audio input format support (ffmpeg) | ✅ Done (awaiting acceptance) |
-| 12 | VAD support + language UI polish | Not started |
+| 12 | VAD support + language UI polish | ✅ Done (awaiting acceptance) |
 | 13 | Streaming ASR (mic/tab audio, WebSocket) | Not started |
 | 14 | Swagger + documentation sync (round 2) | Not started |
 
@@ -950,12 +950,81 @@ known (trivial since the bytes are already fully buffered in memory before retur
 ---
 
 ## Phase 12 — VAD support (Nemotron) + language UI polish
-**Status**: Not started
+**Status**: ✅ Done (awaiting acceptance)
 
 **Goal**: wire the currently-downloaded-but-unused `silero_vad.onnx` asset into real chunk-gating
 during Nemotron transcription (ported from the validated Python reference's `VadGate`/
 `SileroVadOrt` classes in `pyscripts/nemotron_speech_ort_only.py`), exposed as an opt-in
 `use_vad` request field and a frontend checkbox shown only for models with `SupportsVad=true`.
+
+**Changes**:
+1. `Models/AsrModelDefinition.cs` + `Contracts/AsrModelDefinitionResponse.cs`: new `SupportsVad`
+   bool field (`true` for `nemotron-3.5`, `false` for `whisper-base`), set in both `config.json`'s
+   `asrModels` array and `Services/AsrModelCatalog.cs`'s hardcoded defaults.
+2. New `Services/ISileroVadEngine.cs`/`Services/SileroVadEngine.cs`: raw Silero VAD ONNX session
+   wrapper (`Reset()`, `ContainsSpeech(samples, threshold)`), ported from `SileroVadOrt` - fixed
+   `input`/`state`/`sr` → `output`/`stateN` tensor contract (Silero's own ONNX export, not
+   config-driven), `(2,1,128)` LSTM state, windowed processing with a carried-context buffer.
+   Exposed behind an `ISileroVadEngine` interface so the chunk-gating policy is unit-testable
+   without needing real model weights.
+3. New `Services/SileroVadGate.cs`: consecutive-silence chunk-gating policy, ported from `VadGate`
+   (`ShouldDropChunk`), thresholds computed from `genai_config.json`'s `vad` section
+   (`threshold`, `silence_duration_ms`, `prefix_padding_ms`, with the same fallback defaults as
+   the Python reference for configs/models predating that section).
+4. `Contracts/AudioTranscriptionRequest.cs`: new `EnableVad` bool (form field `use_vad`,
+   `true`/`1`). `Program.cs` parses it; `NemotronAsrTranscriber` passes it into
+   `NemotronAsrEngine.Transcribe(wavBytes, language, enableVad)`. `NemotronAsrEngine` lazily
+   constructs its `SileroVadEngine` (and resets its state fresh per utterance, mirroring how
+   `NemotronFeatureExtractor.Reset()` already works) only when VAD is actually requested, and its
+   `RunEncoderChunks` loop calls `SileroVadGate.ShouldDropChunk` per raw-audio chunk, `continue`-ing
+   past the mel/encoder/decoder work entirely for gated (silent) chunks - matching the Python
+   reference's semantics exactly (a skipped chunk doesn't update the streaming feature extractor's
+   left-context/mel-cache state either, only the encoder's cache tensors are preserved as last
+   known good). Whisper: `EnableVad` is a no-op (ignored, mirrors how an unsupported `language`
+   value already behaves) - `WhisperAsrTranscriber` doesn't read the field at all.
+5. Frontend: `types.ts`'s `AsrModel` gains `supportsVad`; `App.vue`'s `asrForm` gains
+   `enableVad` (reset to `false` in `syncAsrModelDefaults()` when switching to a non-VAD model);
+   a checkbox (`.vad-toggle`) rendered only when `selectedAsrModel?.supportsVad`; `transcribe()`
+   appends `use_vad=true` to the FormData only when checked (omitted otherwise, matching the
+   `language` field's omit-when-empty convention).
+6. `docs/API.md`/`docs/CONFIGURATION.md`/`docs/MODELS.md` updated with the new field/response
+   property and VAD behavior description.
+
+**Actual output files**:
+- `src/FastTTSR.Api/Services/SileroVadEngine.cs` (new, includes `ISileroVadEngine`)
+- `src/FastTTSR.Api/Services/SileroVadGate.cs` (new)
+- `src/FastTTSR.Api/Services/NemotronAsrEngine.cs` (modified: vad config parsing, lazy VAD engine,
+  gating in `RunEncoderChunks`, `Transcribe` gains `enableVad` param, `Dispose` disposes the VAD
+  engine if created)
+- `src/FastTTSR.Api/Services/NemotronAsrTranscriber.cs` (modified: passes `request.EnableVad`)
+- `src/FastTTSR.Api/Contracts/AudioTranscriptionRequest.cs` (modified: `EnableVad`)
+- `src/FastTTSR.Api/Models/AsrModelDefinition.cs`,
+  `src/FastTTSR.Api/Contracts/AsrModelDefinitionResponse.cs` (modified: `SupportsVad`)
+- `src/FastTTSR.Api/Services/AsrModelCatalog.cs`, `src/FastTTSR.Api/config.json` (modified:
+  `supportsVad` per model)
+- `src/FastTTSR.Api/Program.cs` (modified: `use_vad` form parsing, `/api/asr-models` response,
+  endpoint description)
+- `frontend/src/types.ts`, `frontend/src/App.vue` (modified: VAD checkbox + state)
+- `tests/FastTTSR.Api.Tests/SileroVadGateTests.cs` (new: fake-engine-based policy tests, no real
+  weights needed)
+- `tests/FastTTSR.Api.Tests/AsrModelCatalogTests.cs` (modified: `SupportsVad` assertions)
+- `tests/FastTTSR.Api.IntegrationTests/AsrCircularTests.cs` (modified: new opt-in
+  `Offline_NemotronWithVad_TranscribesWithoutCrashing` case; `TranscribeAsync` gained an
+  `enableVad` param)
+- `docs/API.md`, `docs/CONFIGURATION.md`, `docs/MODELS.md` (modified)
+
+**Verification**:
+- `./dotnet.sh build FastTTSR.slnx` → 0 errors.
+- `./dotnet.sh test tests/FastTTSR.Api.Tests` → 69/69 passed (was 66; +3 new `SileroVadGateTests`
+  covering never-drop-during-speech, drop-after-configured-silence-duration, and
+  counter-reset-on-speech-return).
+- `cd frontend && npx vue-tsc --noEmit && pnpm run build` → 0 type errors, build succeeds.
+- `./dotnet.sh test tests/FastTTSR.Api.IntegrationTests --filter Category=AsrModelTests` → all 14
+  cases (including the new VAD case) correctly show as **Skipped** by default - confirms the gate
+  is still zero-cost.
+- Not yet run: the opt-in `Offline_NemotronWithVad_TranscribesWithoutCrashing` (needs real
+  downloaded Nemotron + Silero VAD weights) - not exercised in this pass since no models were
+  downloaded in this environment; recommend running it before flipping this phase to Accepted.
 
 ---
 

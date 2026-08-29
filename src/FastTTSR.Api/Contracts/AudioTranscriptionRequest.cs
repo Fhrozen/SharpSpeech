@@ -9,4 +9,5 @@ public sealed class AudioTranscriptionRequest
     public string Model { get; init; } = string.Empty;
     public string? Language { get; init; }
     public string ResponseFormat { get; init; } = "json";
+    public bool EnableVad { get; init; }
 }

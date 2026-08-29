@@ -46,6 +46,7 @@ export interface AsrModel {
   description: string
   supportedLanguages: string[]
   supportsLanguageAutoDetect: boolean
+  supportsVad: boolean
 }
 
 export interface TranscriptionMetrics {

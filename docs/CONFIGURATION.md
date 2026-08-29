@@ -356,6 +356,7 @@ and metadata. Both are loaded from the same file.
 | `assets` | array | **Yes** | List of downloadable assets |
 | `supportedLanguages` | array | No | Supported language codes (empty = relies on auto-detect) |
 | `supportsLanguageAutoDetect` | bool | No | Whether the model can auto-detect the spoken language |
+| `supportsVad` | bool | No | Whether the model supports voice-activity-detection gating (`nemotron-3.5` only; requires the `silero_vad.onnx` asset) |
 
 #### Example: Whisper Model
 
@@ -373,7 +374,8 @@ and metadata. Both are loaded from the same file.
     }
   ],
   "supportedLanguages": [],
-  "supportsLanguageAutoDetect": true
+  "supportsLanguageAutoDetect": true,
+  "supportsVad": false
 }
 ```
 
@@ -394,7 +396,8 @@ and metadata. Both are loaded from the same file.
     { "relativePath": "vocab.txt", "url": "https://huggingface.co/onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4/resolve/main/vocab.txt" }
   ],
   "supportedLanguages": ["en", "es", "fr", "ja", "..."],
-  "supportsLanguageAutoDetect": true
+  "supportsLanguageAutoDetect": true,
+  "supportsVad": true
 }
 ```
 

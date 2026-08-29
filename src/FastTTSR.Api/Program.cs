@@ -383,7 +383,8 @@ app.MapGet("/api/asr-models", (IAsrModelCatalog asrModelCatalog) =>
         m.DisplayName,
         m.Description,
         m.SupportedLanguages,
-        m.SupportsLanguageAutoDetect));
+        m.SupportsLanguageAutoDetect,
+        m.SupportsVad));
 
     return Results.Ok(models);
 })
@@ -411,6 +412,8 @@ app.MapPost("/v1/audio/transcriptions", async (
     var modelName = form["model"].ToString();
     var language = form["language"].ToString();
     var responseFormat = form["response_format"].ToString();
+    var useVadRaw = form["use_vad"].ToString();
+    var enableVad = string.Equals(useVadRaw, "true", StringComparison.OrdinalIgnoreCase) || useVadRaw == "1";
 
     if (file is null || file.Length == 0)
     {
@@ -444,7 +447,8 @@ app.MapPost("/v1/audio/transcriptions", async (
     {
         Model = modelName,
         Language = string.IsNullOrWhiteSpace(language) ? null : language,
-        ResponseFormat = string.IsNullOrWhiteSpace(responseFormat) ? "json" : responseFormat
+        ResponseFormat = string.IsNullOrWhiteSpace(responseFormat) ? "json" : responseFormat,
+        EnableVad = enableVad
     };
 
     var modelDirectory = await modelCache.EnsureModelAsync(model!, cancellationToken);
@@ -460,7 +464,7 @@ app.MapPost("/v1/audio/transcriptions", async (
     .WithName("CreateTranscription")
     .WithTags("OpenAI Compatible")
     .WithSummary("Transcribe audio to text")
-    .WithDescription("Generates a transcription from the uploaded audio file using the specified ASR model. OpenAI-compatible endpoint. Multipart/form-data fields: file (required, any ffmpeg-decodable format - WAV, FLAC, MP3, OGG, WEBM, M4A, etc. - normalized server-side before transcription), model (required), language (optional), response_format (optional). Supports whisper-base (multilingual, auto language detection) and nemotron-3.5 (40 language-locales).")
+    .WithDescription("Generates a transcription from the uploaded audio file using the specified ASR model. OpenAI-compatible endpoint. Multipart/form-data fields: file (required, any ffmpeg-decodable format - WAV, FLAC, MP3, OGG, WEBM, M4A, etc. - normalized server-side before transcription), model (required), language (optional), response_format (optional), use_vad (optional, `true`/`1` to enable voice-activity-detection gating - only affects nemotron-3.5, ignored by whisper-base). Supports whisper-base (multilingual, auto language detection) and nemotron-3.5 (40 language-locales).")
     .Accepts<IFormFile>("multipart/form-data")
     .Produces<object>(200)
     .Produces<ErrorResponse>(400)

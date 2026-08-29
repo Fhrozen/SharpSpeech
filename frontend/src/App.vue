@@ -209,6 +209,7 @@ const asrModels = ref<AsrModel[]>([])
 const asrForm = reactive({
   model: '',
   language: '',
+  enableVad: false,
   file: null as File | null
 })
 const transcriptionText = ref<string | null>(null)
@@ -251,6 +252,10 @@ function syncAsrModelDefaults() {
 
   if (!asrLanguageOptions.value.includes(asrForm.language)) {
     asrForm.language = model.supportsLanguageAutoDetect ? 'auto' : ''
+  }
+
+  if (!model.supportsVad) {
+    asrForm.enableVad = false
   }
 }
 
@@ -307,6 +312,9 @@ async function transcribe() {
     // 'auto' is sent through explicitly (not omitted) so the server always knows auto-detect was chosen.
     if (asrForm.language) {
       payload.append('language', asrForm.language)
+    }
+    if (asrForm.enableVad) {
+      payload.append('use_vad', 'true')
     }
 
     const response = await fetch('/v1/audio/transcriptions', {
@@ -455,6 +463,11 @@ onMounted(async () => {
                 :languages="asrLanguageOptions"
               />
 
+              <label v-if="selectedAsrModel?.supportsVad" class="vad-toggle">
+                <input type="checkbox" v-model="asrForm.enableVad" />
+                Voice-activity detection (skip silent audio)
+              </label>
+
               <AudioFileInput v-model="asrForm.file" />
             </div>
 
@@ -562,6 +575,22 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+}
+
+.vad-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #cccccc;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.vad-toggle input[type='checkbox'] {
+  accent-color: #fbbf24;
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
 }
 
 .demo-output-section {

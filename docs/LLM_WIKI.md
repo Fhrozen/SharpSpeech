@@ -411,6 +411,21 @@ produce structurally-invalid output for formats whose header needs a final byte 
 likely others) - verify with a real run through the actual container/environment, not just unit
 tests that might skip the code path entirely.
 
+#### VAD support (Phase 12 — done)
+`AsrModelDefinition`/`AsrModelDefinitionResponse` gained `SupportsVad` (`nemotron-3.5`: true,
+`whisper-base`: false). `Services/SileroVadEngine.cs` (behind an `ISileroVadEngine` interface, for
+unit-testability without real weights) wraps the bundled `silero_vad.onnx` asset - fixed
+`input`/`state`/`sr` → `output`/`stateN` ONNX tensor contract (Silero's own export, not
+config-driven), `(2,1,128)` LSTM state carried across windowed calls. `Services/SileroVadGate.cs`
+ports the Python reference's consecutive-silence `VadGate.should_drop_chunk` policy (thresholds
+from `genai_config.json`'s `vad` section). Wired via `Contracts/AudioTranscriptionRequest.cs`'s new
+`EnableVad` (form field `use_vad`) → `NemotronAsrEngine.Transcribe(..., enableVad)`: when enabled,
+`RunEncoderChunks` calls `SileroVadGate.ShouldDropChunk` per raw-audio chunk and `continue`s past
+mel/encoder/decoder work entirely for gated (silent) chunks - matching the Python reference's
+semantics exactly (a skipped chunk doesn't advance the streaming feature extractor's
+left-context/mel-cache state either). Whisper ignores `EnableVad` entirely (no-op). Frontend:
+`AsrModel.supportsVad` gates a `.vad-toggle` checkbox in the ASR panel.
+
 #### Worker process, DI wiring & SERVER_MODE (Phase 4 — done)
 - **`SERVER_MODE`** env var (`tts` (default) | `asr` | `both`) parsed at the top of `Program.cs`
   into `ttsEnabled`/`asrEnabled` booleans. The entire pre-existing TTS registration block is now

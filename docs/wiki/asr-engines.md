@@ -145,11 +145,21 @@ Frontend: `AsrModel.supportsVad` gates a `.vad-toggle` checkbox in the ASR panel
   pattern. `Services/WorkerTranscriptionService.cs` mirrors `WorkerSynthesisService`'s
   single-active-engine-with-lock pattern, routing by `request.Engine`.
 - **`Protos/transcription.proto`** (own `csharp_namespace = "FastTTSR.Worker.Asr.Grpc"`):
-  `WorkerTranscription` service with `Transcribe`/`HealthCheck` unary RPCs today; a
-  `TranscribeStream` bidirectional RPC is planned (not yet implemented) — see
-  [docs/ASR_IMPLEMENTATION_PLAN.md](../ASR_IMPLEMENTATION_PLAN.md) Phases 15-17.
+  `WorkerTranscription` service with `Transcribe`/`HealthCheck` unary RPCs, plus `TranscribeStream`
+  - a bidirectional streaming RPC (`stream TranscribeStreamChunk` in, `stream TranscribeStreamUpdate`
+  out) used for live transcription in worker mode. The first request message must set `config`
+  (`StreamConfig`: model_name/engine/model_path/language/use_vad); every subsequent message sets
+  `audio_chunk` (raw PCM16 mono bytes). `WorkerTranscriptionService.TranscribeStream` creates the
+  right engine's `IStreamingTranscriptionSession` (same routing as the unary RPC) and streams back
+  `{ text, is_final }` updates.
 - **`Services/AsrWorkerProxyTranscriber.cs`** (mirrors `WorkerProxySynthesizer`): implements
   `IAsrTranscriber`, resolves its `WorkerProcessManager` via `[FromKeyedServices("asr")]`.
+  `CreateStreamingSessionAsync` opens a duplex `TranscribeStream` call on the pooled worker channel
+  and wraps it in a private `WorkerStreamingSession` adapter implementing
+  `IStreamingTranscriptionSession` (`ProcessChunkAsync` writes a chunk then drains the latest
+  buffered update from a background read-loop task; `FinishAsync` completes the request stream and
+  awaits the final update) - a drop-in for the same interface the in-process engines implement, so
+  the WS handler in `Program.cs` doesn't need to know which mode is active.
 - **`Services/AsrTranscriberRouter.cs`** (in-process mode, mirrors `TtsSynthesizerRouter`): routes
   by `model.Engine == "nemotron-3.5"` else defaults to Whisper.
 - **`Services/AsrModelWarmupService.cs`** / **`Services/AsrModelIdleMonitorService.cs`** mirror the
@@ -164,11 +174,12 @@ Frontend: `AsrModel.supportsVad` gates a `.vad-toggle` checkbox in the ASR panel
   `{ text }` JSON by default, or `{ text, language, duration, segments: [{id,start,end,text}] }`
   when `response_format=verbose_json` (see "VAD/timestamp segments" below), with metrics in
   response headers (`X-Processing-Time`, `X-Audio-Duration`, `X-RTF`, `X-Character-Count`).
-- `GET /v1/audio/transcriptions/stream` (only if `asrEnabled`, WebSocket upgrade): **in-process
-  mode only today** (see "Known issues" below) — query params `model` (required)/`language`/
-  `use_vad`; binary PCM16 16kHz mono frames in, JSON `{"type":"partial"|"final","text":...}`
-  frames out; a `{"type":"end"}` text frame (or socket close) finishes the session. Returns 501 in
-  worker mode.
+- `GET /v1/audio/transcriptions/stream` (only if `asrEnabled`, WebSocket upgrade): works in both
+  in-process and worker mode - query params `model` (required)/`language`/`use_vad`; binary PCM16
+  16kHz mono frames in, JSON `{"type":"partial"|"final","text":...}` frames out; a `{"type":"end"}`
+  text frame (or socket close) finishes the session. Resolved via `IAsrTranscriber
+  .CreateStreamingSessionAsync(...)`, which hides the in-process-vs-worker-mode distinction behind
+  a duplex gRPC call in worker mode (see `AsrWorkerProxyTranscriber` below).
 - `GET /v1/models` merges `IModelCatalog`/`IAsrModelCatalog` results.
 - `/api/models` and `/v1/audio/speech` are wrapped in `if (ttsEnabled)` with zero internal changes.
 
@@ -203,13 +214,17 @@ meaningful:
   a timestamped row list instead of the flat text block when segments are present.
 
 ## Known issues / roadmap (as of this writing)
-- **Live transcription only works in-process** (`AsrWorkerOptions__Enabled=false`) - the default
-  `docker-compose.yml` runs worker mode, under which the WS endpoint 501s; `/api/asr-models`'s
-  `supportsStreaming` reflects this (false whenever worker mode is active). Full worker-mode gRPC
-  streaming support is planned as Phases 15-17 in
-  [docs/ASR_IMPLEMENTATION_PLAN.md](../ASR_IMPLEMENTATION_PLAN.md).
-- **Segment timestamps also only work in-process** for the same reason (see above) - extending
-  `transcription.proto` to carry segments through worker mode isn't scheduled yet.
+- **Segment timestamps only work in-process** (`AsrWorkerOptions__Enabled=false`) -
+  `transcription.proto`'s `TranscribeResponse` doesn't carry segment data yet, so worker-mode
+  `verbose_json` responses return an empty `segments` array. Extending the proto to carry segments
+  isn't scheduled; it would follow the same pattern as `TranscribeStream`'s `StreamConfig`/
+  `TranscribeStreamUpdate` messages.
+- Live transcription's worker-mode path (`AsrWorkerProxyTranscriber.CreateStreamingSessionAsync`) is
+  covered by an opt-in integration test
+  (`AsrCircularTests.Streaming_WorkerMode_TranscribesOverWebSocket`) gated on both real model
+  weights (`ASR_MODEL_TESTS=1`) and a published `FastTTSR.Worker.Asr` executable being present next
+  to the API output - it isn't exercised by a plain `./dotnet.sh test` run in this dev environment
+  and should be validated against a real Docker image before being fully trusted in production.
 
 ## Updated ASR env var table
 | Env var | Purpose | Default |

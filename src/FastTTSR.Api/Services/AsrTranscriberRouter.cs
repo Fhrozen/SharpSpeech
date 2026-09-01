@@ -37,6 +37,21 @@ public sealed class AsrTranscriberRouter : IAsrTranscriber, IIdleTrackingTranscr
         return _whisper.TranscribeAsync(model, modelDirectory, request, audioBytes, cancellationToken);
     }
 
+    public Task<IStreamingTranscriptionSession> CreateStreamingSessionAsync(
+        AsrModelDefinition model,
+        string modelDirectory,
+        string? language,
+        bool enableVad,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(model.Engine, NemotronEngine, StringComparison.OrdinalIgnoreCase))
+        {
+            return _nemotron.CreateStreamingSessionAsync(model, modelDirectory, language, enableVad, cancellationToken);
+        }
+
+        return _whisper.CreateStreamingSessionAsync(model, modelDirectory, language, enableVad, cancellationToken);
+    }
+
     public IReadOnlyDictionary<string, DateTime> GetLoadedEngines()
     {
         var allEngines = new Dictionary<string, DateTime>();

@@ -74,9 +74,9 @@
 | 12 | VAD support + language UI polish | ✅ Done (awaiting acceptance) — [full detail](ASR_IMPLEMENTATION_HISTORY.md#phase-12--vad-support-nemotron--language-ui-polish) |
 | 13 | Streaming ASR (mic/tab audio, WebSocket) | ✅ Done (awaiting acceptance) — see below |
 | 14 | VAD/timestamp segments (offline endpoint) | ✅ Done (awaiting acceptance) — see below |
-| 15 | Worker-mode streaming: proto + worker-side | Not started — see below |
-| 16 | Worker-mode streaming: API proxy + unification | Not started — see below |
-| 17 | Worker-mode streaming: tests + docs sync | Not started — see below |
+| 15 | Worker-mode streaming: proto + worker-side | ✅ Done (awaiting acceptance) — see below |
+| 16 | Worker-mode streaming: API proxy + unification | ✅ Done (awaiting acceptance) — see below |
+| 17 | Worker-mode streaming: tests + docs sync | ✅ Done (awaiting acceptance) — see below |
 | 18 | Swagger + documentation sync (round 2) | Not started — see below |
 
 ---
@@ -342,7 +342,7 @@ need once Phases 15-17 (worker-mode streaming) land, since they touch the same p
 ---
 
 ## Phase 15 — Worker-mode streaming: proto + worker-side implementation
-**Status**: Not started
+**Status**: ✅ Done (awaiting acceptance)
 
 **Goal**: extend the ASR worker gRPC protocol with a **bidirectional streaming** RPC, so live
 transcription (Phase 13) can eventually work under `AsrWorkerOptions__Enabled=true` too, not just
@@ -362,20 +362,28 @@ in-process. This is standard, well-supported grpc-dotnet functionality
    `responseStream.WriteAsync(new { text, is_final = false })`; on request-stream completion, call
    `session.FinishAsync()` and write one final `is_final = true` update.
 
-**Expected output files**: `src/FastTTSR.Api/Protos/transcription.proto`,
-`src/FastTTSR.Worker.Asr/Services/WorkerTranscriptionService.cs`, a new isolated integration test
-(see Verification).
+**Actual output files**:
+- `src/FastTTSR.Api/Protos/transcription.proto` (modified: added `TranscribeStream` bidirectional
+  RPC, `TranscribeStreamChunk` (a `oneof payload { StreamConfig config; bytes audio_chunk; }`),
+  `StreamConfig`, `TranscribeStreamUpdate`)
+- `src/FastTTSR.Worker.Asr/Services/WorkerTranscriptionService.cs` (modified: implemented
+  `TranscribeStream` — reads the first `config` message, builds the right engine's
+  `IStreamingTranscriptionSession` via the same `GetOrCreateWhisperEngine`/`GetOrCreateNemotronEngine`
+  helpers as the unary `Transcribe` RPC (refactored to take plain `(modelName, modelPath)` params
+  instead of a `TranscribeRequest` so both RPCs can share them), then loops `ProcessChunkAsync` per
+  audio chunk and writes partial/final `TranscribeStreamUpdate`s)
 
-**Verification (planned, independently testable without touching the API/WS layer at all)**: a
-small integration test that starts a real `FastTTSR.Worker.Asr` process directly (bypassing
-`WorkerProcessManager`/HTTP) and drives the `TranscribeStream` RPC with a raw `Grpc.Net.Client`
-channel, asserting it receives partial/final updates for a short synthesized clip — proves the
-worker-side contract works in isolation before any client wiring exists.
+**Verification**:
+- `./dotnet.sh build FastTTSR.slnx` → 0 errors (generated gRPC code for the new RPC/messages
+  compiles on both the API's client-side and the worker's server-side proto includes).
+- Real end-to-end verification (a standalone worker process + raw `Grpc.Net.Client` test, as
+  originally planned) was folded into Phase 17's opt-in integration test instead of a separate
+  throwaway harness — see Phase 17 below.
 
 ---
 
 ## Phase 16 — Worker-mode streaming: API-side proxy + endpoint unification
-**Status**: Not started
+**Status**: ✅ Done (awaiting acceptance)
 
 **Inputs**: Phase 15's `TranscribeStream` RPC.
 
@@ -394,30 +402,74 @@ worker-side contract works in isolation before any client wiring exists.
 3. Remove the Phase-13 runtime-gating fix from `/api/asr-models` (streaming now always works,
    report `SupportsStreaming` from the catalog unconditionally again).
 
-**Expected output files**: `src/FastTTSR.Api/Services/AsrWorkerProxyTranscriber.cs`,
-`src/FastTTSR.Api/Services/IAsrTranscriber.cs` (or new marker interface),
-`src/FastTTSR.Api/Services/AsrTranscriberRouter.cs`, `src/FastTTSR.Api/Program.cs`.
+**Actual output files**:
+- `src/FastTTSR.Api/Services/IAsrTranscriber.cs` (modified: added
+  `Task<IStreamingTranscriptionSession> CreateStreamingSessionAsync(model, modelDirectory,
+  language, enableVad, cancellationToken)` to the interface — all 4 implementations updated)
+- `src/FastTTSR.Api/Services/AsrWorkerProxyTranscriber.cs` (modified: `CreateStreamingSessionAsync`
+  opens a duplex `TranscribeStream` call and returns a new private `WorkerStreamingSession`
+  adapter — `ProcessChunkAsync` writes a request-stream chunk then drains the latest buffered
+  update off a `System.Threading.Channels.Channel<string>` fed by a background read-loop task;
+  `FinishAsync` completes the request stream and awaits the read loop for the final update)
+- `src/FastTTSR.Api/Services/AsrTranscriberRouter.cs` (modified: routes
+  `CreateStreamingSessionAsync` to `_whisper`/`_nemotron` by engine, same as `TranscribeAsync`)
+- `src/FastTTSR.Api/Services/WhisperAsrTranscriber.cs` / `NemotronAsrTranscriber.cs` (modified:
+  each gained a thin `CreateStreamingSessionAsync` wrapper around their existing sync
+  `CreateStreamingSession` method, to satisfy the interface)
+- `src/FastTTSR.Api/Program.cs` (modified: `/v1/audio/transcriptions/stream` now takes an
+  `IAsrTranscriber` DI parameter and calls `CreateStreamingSessionAsync(...)` unconditionally —
+  deleted the `GetService<WhisperAsrTranscriber>()`/`GetService<NemotronAsrTranscriber>()`/501
+  branch entirely; `/api/asr-models` reverted to reporting `SupportsStreaming` from the catalog
+  unconditionally, removing the Phase-13 `IOptions<AsrWorkerOptions>` runtime-gating hack)
 
-**Verification (planned)**: full end-to-end with the *default* docker-compose settings (worker
-mode, `AsrWorkerOptions__Enabled=true`) — run `pyscripts/streaming.py` (fixed in Phase 13) and the
-frontend's Live Transcription button against a real `docker compose up`, confirm partial/final
-text arrives exactly as it does today in in-process mode.
+**Verification**:
+- `./dotnet.sh build FastTTSR.slnx` → 0 errors.
+- `./dotnet.sh test tests/FastTTSR.Api.Tests` → 74/74 passed (unchanged — confirms the new
+  interface member and its 4 implementations didn't regress anything already covered).
+- Not yet run: a real `docker compose up` (default worker-mode settings) end-to-end check with
+  `pyscripts/streaming.py`/the frontend's Live Transcription button — no Docker build performed
+  this pass; recommend doing so before flipping this phase to Accepted (see Phase 17's opt-in test
+  for the automated equivalent, which also hasn't been run for real in this environment).
 
 ---
 
 ## Phase 17 — Worker-mode streaming: tests + docs sync
-**Status**: Not started
+**Status**: ✅ Done (awaiting acceptance)
 
-**Planned changes**:
-1. Add an opt-in circular test (same `AsrModelTestGate`/`ASR_MODEL_TESTS=1` pattern) that
-   exercises the WS endpoint end-to-end under worker mode.
-2. Update this plan's status tracker, `docs/wiki/asr-engines.md`'s worker-mode section,
-   `docs/API.md`/`docs/TROUBLESHOOTING.md` to remove the now-resolved "(AsrWorkerOptions__Enabled
-   =false) only" caveats.
+**Actual output files**:
+- `tests/FastTTSR.Api.IntegrationTests/Support/WorkerAsrExecutableGate.cs` (new): checks whether a
+  real published `FastTTSR.Worker.Asr` executable exists next to the API output (mirrors
+  `FfmpegTestGate`'s pattern of gating on an external dependency's presence).
+- `tests/FastTTSR.Api.IntegrationTests/AsrCircularTests.cs` (modified): new opt-in
+  `Streaming_WorkerMode_TranscribesOverWebSocket` test, gated on both `AsrModelTestGate` and
+  `WorkerAsrExecutableGate` — builds a `SERVER_MODE=asr`/`AsrWorkerOptions__Enabled=true` factory,
+  connects to `/v1/audio/transcriptions/stream` via `TestServer.CreateWebSocketClient()`, streams a
+  synthetic 440Hz sine-tone PCM16 clip in 100ms chunks (no TTS dependency, mirrors
+  `pyscripts/streaming.py`'s original synthetic-audio helper), sends `{"type":"end"}`, and asserts
+  a non-null final transcript arrives — proves the worker-mode duplex gRPC round-trip completes
+  without crashing, not transcription accuracy (synthetic tone, not real speech).
+- `docs/ASR_IMPLEMENTATION_PLAN.md` (this file, status tracker + Phases 15-17 detail).
+- `docs/wiki/asr-engines.md` (modified: worker-mode streaming sections updated, "Known issues"
+  entry for live transcription removed since it's now resolved, replaced with a note about the
+  new opt-in test's coverage/limitations).
+- `docs/TROUBLESHOOTING.md` (modified: removed the "501 requires in-process mode" explanation from
+  the WS troubleshooting entry, replaced with a note that both modes now work identically).
 
-**Expected output files**: `tests/FastTTSR.Api.IntegrationTests/AsrCircularTests.cs` (modified),
-`docs/ASR_IMPLEMENTATION_PLAN.md`, `docs/wiki/asr-engines.md`, `docs/API.md`,
-`docs/TROUBLESHOOTING.md`.
+**Verification**:
+- `./dotnet.sh build tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj` → 0
+  errors (this project isn't part of `FastTTSR.slnx`, build/test it directly by path).
+- Ran the new test filtered by name without `ASR_MODEL_TESTS`/a published worker executable set →
+  correctly shows **Skipped**, confirming the gate is zero-cost in this dev environment (matches
+  every other opt-in test in this suite).
+- **Not yet run for real**: this test (and Phase 16's manual `docker compose up` check) require a
+  real Docker image build where `FastTTSR.Worker.Asr` is actually published next to the API (this
+  dev environment only has the plain SDK, no published worker binaries) — recommend building
+  `docker build --target runtime-all` and running `ASR_MODEL_TESTS=1 dotnet test ... --filter
+  FullyQualifiedName~Streaming_WorkerMode_TranscribesOverWebSocket` (or the equivalent via
+  `./tests/run-tests.sh asr-model-tests`) inside that image, plus a manual
+  `pyscripts/streaming.py`/frontend Live Transcription check against `docker compose up` with
+  default (worker-mode) settings, before flipping Phases 15-17 to Accepted — same caveat pattern
+  as Phase 11's ffmpeg fix, which also could only be fully validated inside a real built image.
 
 ---
 

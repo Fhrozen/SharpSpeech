@@ -1,8 +1,10 @@
 using System.Collections.Concurrent;
+using System.Threading.Channels;
 using FastTTSR.Api.Contracts;
 using FastTTSR.Api.Models;
 using FastTTSR.Worker.Asr.Grpc;
 using Google.Protobuf;
+using Grpc.Core;
 using Grpc.Net.Client;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -120,5 +122,100 @@ public sealed class AsrWorkerProxyTranscriber : IAsrTranscriber, IDisposable
         }
 
         _disposed = true;
+    }
+
+    public async Task<IStreamingTranscriptionSession> CreateStreamingSessionAsync(
+        AsrModelDefinition model, string modelDirectory, string? language, bool enableVad, CancellationToken cancellationToken)
+    {
+        var modelKey = $"{model.Engine}:{model.Name}";
+
+        var worker = await _processManager.GetOrSpawnWorkerAsync(modelKey, cancellationToken);
+        var channel = GetOrCreateChannel(modelKey, worker.Port);
+        var client = new WorkerTranscription.WorkerTranscriptionClient(channel);
+
+        var call = client.TranscribeStream(cancellationToken: cancellationToken);
+        await call.RequestStream.WriteAsync(new TranscribeStreamChunk
+        {
+            Config = new StreamConfig
+            {
+                ModelName = model.Name,
+                Engine = model.Engine,
+                ModelPath = Path.Combine(modelDirectory, model.ModelPath),
+                Language = language ?? string.Empty,
+                UseVad = enableVad
+            }
+        }, cancellationToken);
+
+        return new WorkerStreamingSession(call);
+    }
+
+    /// <summary>Adapts a duplex TranscribeStream gRPC call to <see cref="IStreamingTranscriptionSession"/> -
+    /// a drop-in for the in-process streaming sessions, so Program.cs's WebSocket handler doesn't
+    /// need to know whether ASR is running in-process or in worker mode.</summary>
+    private sealed class WorkerStreamingSession : IStreamingTranscriptionSession
+    {
+        private readonly AsyncDuplexStreamingCall<TranscribeStreamChunk, TranscribeStreamUpdate> _call;
+        private readonly Channel<string> _updates = Channel.CreateUnbounded<string>();
+        private readonly Task _readLoopTask;
+        private string _lastFinalText = string.Empty;
+
+        // Both engines' streaming sessions operate on 16kHz PCM16 mono audio - see WhisperStreamingSession/NemotronAsrEngine.
+        public int SampleRate => 16000;
+
+        public WorkerStreamingSession(AsyncDuplexStreamingCall<TranscribeStreamChunk, TranscribeStreamUpdate> call)
+        {
+            _call = call;
+            _readLoopTask = ReadLoopAsync();
+        }
+
+        private async Task ReadLoopAsync()
+        {
+            try
+            {
+                await foreach (var update in _call.ResponseStream.ReadAllAsync())
+                {
+                    if (update.IsFinal)
+                    {
+                        _lastFinalText = update.Text;
+                    }
+
+                    await _updates.Writer.WriteAsync(update.Text);
+                }
+            }
+            catch (Exception)
+            {
+                // Connection dropped/cancelled - FinishAsync falls back to the last known text.
+            }
+            finally
+            {
+                _updates.Writer.TryComplete();
+            }
+        }
+
+        public async Task<string?> ProcessChunkAsync(byte[] pcm16Chunk, CancellationToken cancellationToken)
+        {
+            await _call.RequestStream.WriteAsync(new TranscribeStreamChunk { AudioChunk = ByteString.CopyFrom(pcm16Chunk) }, cancellationToken);
+            return DrainLatestUpdate();
+        }
+
+        public async Task<string> FinishAsync(CancellationToken cancellationToken)
+        {
+            await _call.RequestStream.CompleteAsync();
+            await _readLoopTask;
+            return DrainLatestUpdate() ?? _lastFinalText;
+        }
+
+        private string? DrainLatestUpdate()
+        {
+            string? latest = null;
+            while (_updates.Reader.TryRead(out var next))
+            {
+                latest = next;
+            }
+
+            return latest;
+        }
+
+        public void Dispose() => _call.Dispose();
     }
 }

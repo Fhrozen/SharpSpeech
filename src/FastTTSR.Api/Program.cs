@@ -1,7 +1,6 @@
 using FastTTSR.Api.Contracts;
 using FastTTSR.Api.Options;
 using FastTTSR.Api.Services;
-using Microsoft.Extensions.Options;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -381,12 +380,8 @@ app.MapPost("/v1/audio/speech", async (
 
 if (asrEnabled)
 {
-app.MapGet("/api/asr-models", (IAsrModelCatalog asrModelCatalog, IOptions<AsrWorkerOptions> asrWorkerOptions) =>
+app.MapGet("/api/asr-models", (IAsrModelCatalog asrModelCatalog) =>
 {
-    // Live streaming only works in-process today (see /v1/audio/transcriptions/stream) - don't
-    // advertise it to the frontend when the server can't actually serve it.
-    var streamingActuallyAvailable = !asrWorkerOptions.Value.Enabled;
-
     var models = asrModelCatalog.GetSupportedModels().Select(m => new AsrModelDefinitionResponse(
         m.Name,
         m.DisplayName,
@@ -394,14 +389,14 @@ app.MapGet("/api/asr-models", (IAsrModelCatalog asrModelCatalog, IOptions<AsrWor
         m.SupportedLanguages,
         m.SupportsLanguageAutoDetect,
         m.SupportsVad,
-        m.SupportsStreaming && streamingActuallyAvailable));
+        m.SupportsStreaming));
 
     return Results.Ok(models);
 })
     .WithName("GetAsrModels")
     .WithTags("Models")
     .WithSummary("List available ASR models")
-    .WithDescription("Returns detailed information about all available speech-to-text models, including supported languages. supportsStreaming reflects whether live transcription can actually be used right now (requires AsrWorkerOptions__Enabled=false).")
+    .WithDescription("Returns detailed information about all available speech-to-text models, including supported languages")
     .Produces<IEnumerable<AsrModelDefinitionResponse>>(200);
 
 app.MapPost("/v1/audio/transcriptions", async (
@@ -500,6 +495,7 @@ app.MapGet("/v1/audio/transcriptions/stream", async (
     HttpContext httpContext,
     IAsrModelCatalog asrModelCatalog,
     IModelCache modelCache,
+    IAsrTranscriber transcriber,
     CancellationToken cancellationToken) =>
 {
     if (!httpContext.WebSockets.IsWebSocketRequest)
@@ -521,33 +517,11 @@ app.MapGet("/v1/audio/transcriptions/stream", async (
         return;
     }
 
-    // v1 scope: streaming only works in-process (AsrWorkerOptions__Enabled=false) - the worker
-    // gRPC protocol has no streaming RPCs yet, so these singletons simply aren't registered when
-    // ASR runs in worker mode.
-    var whisperTranscriber = httpContext.RequestServices.GetService<WhisperAsrTranscriber>();
-    var nemotronTranscriber = httpContext.RequestServices.GetService<NemotronAsrTranscriber>();
-
-    IStreamingTranscriptionSession? session = null;
+    // Works identically whether ASR runs in-process or in worker mode - IAsrTranscriber's
+    // CreateStreamingSessionAsync hides a duplex gRPC call behind the same interface in worker mode.
     var resolvedLanguage = string.IsNullOrWhiteSpace(language) ? null : language;
-
-    if (string.Equals(model!.Engine, "nemotron-3.5", StringComparison.OrdinalIgnoreCase) && nemotronTranscriber is not null)
-    {
-        var modelDirectory = await modelCache.EnsureModelAsync(model, cancellationToken);
-        session = nemotronTranscriber.CreateStreamingSession(model, modelDirectory, resolvedLanguage, enableVad);
-    }
-    else if (whisperTranscriber is not null)
-    {
-        var modelDirectory = await modelCache.EnsureModelAsync(model, cancellationToken);
-        session = whisperTranscriber.CreateStreamingSession(model, modelDirectory, resolvedLanguage);
-    }
-
-    if (session is null)
-    {
-        httpContext.Response.StatusCode = StatusCodes.Status501NotImplemented;
-        await httpContext.Response.WriteAsync(
-            "Streaming transcription requires in-process ASR mode (AsrWorkerOptions__Enabled=false).", cancellationToken);
-        return;
-    }
+    var modelDirectory = await modelCache.EnsureModelAsync(model!, cancellationToken);
+    var session = await transcriber.CreateStreamingSessionAsync(model!, modelDirectory, resolvedLanguage, enableVad, cancellationToken);
 
     using var _ = session;
     using var webSocket = await httpContext.WebSockets.AcceptWebSocketAsync();
@@ -565,9 +539,9 @@ app.MapGet("/v1/audio/transcriptions/stream", async (
         "Nemotron uses true cache-aware incremental decoding; Whisper has no incremental API and instead " +
         "periodically re-transcribes the whole buffered audio so far. Send a text frame `{\"type\":\"end\"}` " +
         "(or close the socket) to finish - the server replies once more with " +
-        "`{\"type\":\"final\",\"text\":\"...\"}` before closing. Requires in-process ASR mode " +
-        "(AsrWorkerOptions__Enabled=false) - returns 501 otherwise. Swagger UI cannot exercise WebSocket " +
-        "endpoints via \"Try it out\"; this description documents the protocol only.");
+        "`{\"type\":\"final\",\"text\":\"...\"}` before closing. Works in both in-process and worker mode. " +
+        "Swagger UI cannot exercise WebSocket endpoints via \"Try it out\"; this description documents the " +
+        "protocol only.");
 }
 
 app.MapFallbackToFile("/index.html");

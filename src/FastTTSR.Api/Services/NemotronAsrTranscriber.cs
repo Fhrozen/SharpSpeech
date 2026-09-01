@@ -47,6 +47,10 @@ public sealed class NemotronAsrTranscriber : IAsrTranscriber, IIdleTrackingTrans
         return GetOrCreateEngine(model, modelDirectory).CreateStreamingSession(language, enableVad);
     }
 
+    public Task<IStreamingTranscriptionSession> CreateStreamingSessionAsync(
+        AsrModelDefinition model, string modelDirectory, string? language, bool enableVad, CancellationToken cancellationToken) =>
+        Task.FromResult(CreateStreamingSession(model, modelDirectory, language, enableVad));
+
     private NemotronAsrEngine GetOrCreateEngine(AsrModelDefinition model, string modelDirectory)
     {
         var cacheKey = $"{model.Name}:{modelDirectory}";

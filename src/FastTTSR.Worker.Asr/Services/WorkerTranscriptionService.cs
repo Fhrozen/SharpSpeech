@@ -38,12 +38,12 @@ public sealed class WorkerTranscriptionService : WorkerTranscription.WorkerTrans
 
         if (string.Equals(request.Engine, "nemotron-3.5", StringComparison.OrdinalIgnoreCase))
         {
-            var engine = GetOrCreateNemotronEngine(request);
+            var engine = GetOrCreateNemotronEngine(request.ModelName, request.ModelPath);
             (text, detectedLanguage, _) = await Task.Run(() => engine.Transcribe(audioBytes, language), context.CancellationToken);
         }
         else
         {
-            var engine = GetOrCreateWhisperEngine(request);
+            var engine = GetOrCreateWhisperEngine(request.ModelName, request.ModelPath);
             (text, detectedLanguage, _) = await engine.TranscribeAsync(audioBytes, language, context.CancellationToken);
         }
 
@@ -61,11 +61,52 @@ public sealed class WorkerTranscriptionService : WorkerTranscription.WorkerTrans
         };
     }
 
-    private WhisperAsrEngine GetOrCreateWhisperEngine(TranscribeRequest request)
+    public override async Task TranscribeStream(
+        IAsyncStreamReader<TranscribeStreamChunk> requestStream,
+        IServerStreamWriter<TranscribeStreamUpdate> responseStream,
+        ServerCallContext context)
+    {
+        _idleMonitor.RecordActivity();
+
+        if (!await requestStream.MoveNext(context.CancellationToken) || requestStream.Current.PayloadCase != TranscribeStreamChunk.PayloadOneofCase.Config)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "The first TranscribeStream message must set 'config'."));
+        }
+
+        var config = requestStream.Current.Config;
+        Console.WriteLine($"[Worker.Asr] TranscribeStream started: engine={config.Engine}, model={config.ModelName}");
+        var language = string.IsNullOrEmpty(config.Language) ? null : config.Language;
+
+        using IStreamingTranscriptionSession session = string.Equals(config.Engine, "nemotron-3.5", StringComparison.OrdinalIgnoreCase)
+            ? GetOrCreateNemotronEngine(config.ModelName, config.ModelPath).CreateStreamingSession(language, config.UseVad)
+            : new WhisperStreamingSession(GetOrCreateWhisperEngine(config.ModelName, config.ModelPath), language);
+
+        while (await requestStream.MoveNext(context.CancellationToken))
+        {
+            _idleMonitor.RecordActivity();
+            var chunk = requestStream.Current;
+            if (chunk.PayloadCase != TranscribeStreamChunk.PayloadOneofCase.AudioChunk)
+            {
+                continue;
+            }
+
+            var updatedText = await session.ProcessChunkAsync(chunk.AudioChunk.ToByteArray(), context.CancellationToken);
+            if (updatedText is not null)
+            {
+                await responseStream.WriteAsync(new TranscribeStreamUpdate { Text = updatedText, IsFinal = false });
+            }
+        }
+
+        var finalText = await session.FinishAsync(context.CancellationToken);
+        await responseStream.WriteAsync(new TranscribeStreamUpdate { Text = finalText, IsFinal = true });
+        Console.WriteLine("[Worker.Asr] TranscribeStream finished");
+    }
+
+    private WhisperAsrEngine GetOrCreateWhisperEngine(string modelName, string modelPath)
     {
         lock (_engineLock)
         {
-            var modelKey = $"whisper:{request.ModelName}";
+            var modelKey = $"whisper:{modelName}";
 
             if (_whisperEngine == null || _loadedModelKey != modelKey)
             {
@@ -73,14 +114,14 @@ public sealed class WorkerTranscriptionService : WorkerTranscription.WorkerTrans
                 _nemotronEngine?.Dispose();
                 _nemotronEngine = null;
 
-                Console.WriteLine($"[Worker.Asr] Loading Whisper model: {request.ModelPath}");
+                Console.WriteLine($"[Worker.Asr] Loading Whisper model: {modelPath}");
 
-                if (!File.Exists(request.ModelPath))
+                if (!File.Exists(modelPath))
                 {
-                    throw new FileNotFoundException($"Model file not found: {request.ModelPath}");
+                    throw new FileNotFoundException($"Model file not found: {modelPath}");
                 }
 
-                _whisperEngine = new WhisperAsrEngine(request.ModelPath);
+                _whisperEngine = new WhisperAsrEngine(modelPath);
                 _loadedModelKey = modelKey;
             }
 
@@ -88,11 +129,11 @@ public sealed class WorkerTranscriptionService : WorkerTranscription.WorkerTrans
         }
     }
 
-    private NemotronAsrEngine GetOrCreateNemotronEngine(TranscribeRequest request)
+    private NemotronAsrEngine GetOrCreateNemotronEngine(string modelName, string modelPath)
     {
         lock (_engineLock)
         {
-            var modelKey = $"nemotron-3.5:{request.ModelName}";
+            var modelKey = $"nemotron-3.5:{modelName}";
 
             if (_nemotronEngine == null || _loadedModelKey != modelKey)
             {
@@ -100,14 +141,14 @@ public sealed class WorkerTranscriptionService : WorkerTranscription.WorkerTrans
                 _whisperEngine?.Dispose();
                 _whisperEngine = null;
 
-                Console.WriteLine($"[Worker.Asr] Loading Nemotron model from directory: {request.ModelPath}");
+                Console.WriteLine($"[Worker.Asr] Loading Nemotron model from directory: {modelPath}");
 
-                if (!Directory.Exists(request.ModelPath))
+                if (!Directory.Exists(modelPath))
                 {
-                    throw new DirectoryNotFoundException($"Model directory not found: {request.ModelPath}");
+                    throw new DirectoryNotFoundException($"Model directory not found: {modelPath}");
                 }
 
-                _nemotronEngine = new NemotronAsrEngine(request.ModelPath);
+                _nemotronEngine = new NemotronAsrEngine(modelPath);
                 _loadedModelKey = modelKey;
             }
 

@@ -47,6 +47,11 @@ public sealed class WhisperAsrTranscriber : IAsrTranscriber, IIdleTrackingTransc
         return new WhisperStreamingSession(GetOrCreateEngine(model, modelDirectory), language);
     }
 
+    // Whisper has no VAD support - enableVad is accepted only to satisfy IAsrTranscriber's uniform signature.
+    public Task<IStreamingTranscriptionSession> CreateStreamingSessionAsync(
+        AsrModelDefinition model, string modelDirectory, string? language, bool enableVad, CancellationToken cancellationToken) =>
+        Task.FromResult(CreateStreamingSession(model, modelDirectory, language));
+
     private WhisperAsrEngine GetOrCreateEngine(AsrModelDefinition model, string modelDirectory)
     {
         var cacheKey = $"{model.Name}:{modelDirectory}";

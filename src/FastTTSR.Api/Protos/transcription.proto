@@ -9,6 +9,10 @@ service WorkerTranscription {
   // Transcribe audio to text
   rpc Transcribe(TranscribeRequest) returns (TranscribeResponse);
 
+  // Bidirectional streaming transcription: client sends a one-time config chunk followed by raw
+  // PCM16 mono audio chunks, server replies with the transcript-so-far as it becomes available.
+  rpc TranscribeStream(stream TranscribeStreamChunk) returns (stream TranscribeStreamUpdate);
+
   // Health check for worker readiness
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
 }
@@ -32,6 +36,30 @@ message TranscribeResponse {
   string language_detected = 2;
   double processing_time_seconds = 3;
   double audio_duration_seconds = 4;
+}
+
+// One message in a TranscribeStream call - the first message on a call must set `config`; every
+// subsequent message carries a raw PCM16 mono audio chunk instead.
+message TranscribeStreamChunk {
+  oneof payload {
+    StreamConfig config = 1;
+    bytes audio_chunk = 2;
+  }
+}
+
+// One-time stream configuration, sent as the first TranscribeStreamChunk on a call.
+message StreamConfig {
+  string model_name = 1;
+  string engine = 2;
+  string model_path = 3;
+  string language = 4;
+  bool use_vad = 5;
+}
+
+// One incremental transcription update - carries the full transcript-so-far, not a delta.
+message TranscribeStreamUpdate {
+  string text = 1;
+  bool is_final = 2;
 }
 
 // Health check request

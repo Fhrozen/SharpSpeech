@@ -1,5 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Net.WebSockets;
+using System.Text;
 using System.Text.Json;
 using FastTTSR.Api.IntegrationTests.Support;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -139,6 +141,68 @@ public class AsrCircularTests
 
         Assert.False(string.IsNullOrWhiteSpace(transcript), "VAD-enabled Nemotron transcription produced an empty transcript.");
         Assert.True(wer <= 0.9, $"VAD-enabled Nemotron WER {wer:P0} too high for sample '{sample.Id}'.");
+    }
+
+    [SkippableFact]
+    public async Task Streaming_WorkerMode_TranscribesOverWebSocket()
+    {
+        Skip.IfNot(AsrModelTestGate.IsEnabled, AsrModelTestGate.SkipReason);
+        Skip.IfNot(WorkerAsrExecutableGate.IsAvailable, WorkerAsrExecutableGate.SkipReason);
+
+        Environment.SetEnvironmentVariable("SERVER_MODE", "asr");
+        Environment.SetEnvironmentVariable("AsrWorkerOptions__Enabled", "true");
+        using var factory = new WebApplicationFactory<Program>();
+        var wsClient = factory.Server.CreateWebSocketClient();
+
+        var wsUri = new Uri(factory.Server.BaseAddress, "/v1/audio/transcriptions/stream?model=whisper-base");
+        using var socket = await wsClient.ConnectAsync(new Uri(wsUri.ToString().Replace("http", "ws")), CancellationToken.None);
+
+        // Synthetic tone, not real speech - this test proves the worker-mode duplex gRPC round-trip
+        // completes without crashing, not transcription accuracy (mirrors Phase 3's initial engine smoke test).
+        var pcm = GenerateSyntheticPcm16(durationSeconds: 2.0);
+        const int chunkBytes = 3200; // 100ms @ 16kHz mono PCM16
+        for (var offset = 0; offset < pcm.Length; offset += chunkBytes)
+        {
+            var length = Math.Min(chunkBytes, pcm.Length - offset);
+            await socket.SendAsync(new ArraySegment<byte>(pcm, offset, length), WebSocketMessageType.Binary, endOfMessage: true, CancellationToken.None);
+        }
+
+        await socket.SendAsync(Encoding.UTF8.GetBytes("{\"type\":\"end\"}"), WebSocketMessageType.Text, endOfMessage: true, CancellationToken.None);
+
+        string? finalText = null;
+        var buffer = new byte[16 * 1024];
+        while (socket.State == WebSocketState.Open)
+        {
+            var result = await socket.ReceiveAsync(buffer, CancellationToken.None);
+            if (result.MessageType == WebSocketMessageType.Close)
+            {
+                break;
+            }
+
+            var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
+            _output.WriteLine($"[worker-mode WS] {json}");
+            var message = JsonSerializer.Deserialize<JsonElement>(json);
+            if (message.GetProperty("type").GetString() == "final")
+            {
+                finalText = message.GetProperty("text").GetString();
+                break;
+            }
+        }
+
+        Assert.NotNull(finalText);
+    }
+
+    private static byte[] GenerateSyntheticPcm16(double durationSeconds, int sampleRate = 16000)
+    {
+        var sampleCount = (int)(durationSeconds * sampleRate);
+        var pcm = new byte[sampleCount * 2];
+        for (var i = 0; i < sampleCount; i++)
+        {
+            var sample = (short)(0.5 * short.MaxValue * Math.Sin(2 * Math.PI * 440 * i / sampleRate));
+            BitConverter.GetBytes(sample).CopyTo(pcm, i * 2);
+        }
+
+        return pcm;
     }
 
     public static IEnumerable<object[]> AsrModelNames() => AsrModels.Select(m => new object[] { m });

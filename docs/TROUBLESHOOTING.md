@@ -705,24 +705,21 @@ the nginx example in [docs/CONFIGURATION.md](CONFIGURATION.md)), or access it vi
 `http://localhost:5768` if the browser and server are on the same machine. `LiveTranscription.vue`
 now shows this exact explanation instead of a raw JS error when it detects the missing API.
 
-### `GET /v1/audio/transcriptions/stream` (live transcription) returns 404 or 501
+### `GET /v1/audio/transcriptions/stream` (live transcription) returns 404
 
 **404 ("The requested model was not found")**: the `model` query parameter was missing or didn't
 match a real model name - the endpoint requires `?model=<name>` (e.g.
 `?model=whisper-base`), it is not optional the way it is for some other fields. Double-check any
 client script's WebSocket URL includes it.
 
-**501 ("Streaming transcription requires in-process ASR mode")**: live transcription only works
-when `AsrWorkerOptions__Enabled=false` (in-process mode) - the default `docker-compose.yml` runs
-worker mode (`AsrWorkerOptions__Enabled=true`), under which this always 501s. `GET
-/api/asr-models`'s `supportsStreaming` field reflects this automatically (it's `false` whenever
-`AsrWorkerOptions__Enabled=true`, even for models that support streaming in principle), so the
-frontend hides the Live Transcription tab in that case rather than showing a broken button. Set
-`AsrWorkerOptions__Enabled=false` to use live transcription today; worker-mode gRPC streaming
-support is tracked as a future phase in
-[docs/ASR_IMPLEMENTATION_PLAN.md](ASR_IMPLEMENTATION_PLAN.md).
+**Note**: live transcription now works identically in both in-process mode
+(`AsrWorkerOptions__Enabled=false`) and worker mode (`AsrWorkerOptions__Enabled=true`, the
+`docker-compose.yml` default) - the ASR worker process implements a bidirectional streaming gRPC
+RPC (`TranscribeStream`) that the API transparently proxies. If you're on an older build that still
+returns `501`, update to a version that includes worker-mode streaming support.
 
 ---
+
 
 ## Docker Issues
 

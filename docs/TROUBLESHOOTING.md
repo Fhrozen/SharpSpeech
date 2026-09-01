@@ -623,7 +623,8 @@ match this.
 
 **Solution:** Already handled - `WhisperAsrEngine` calls `WavAudioUtils.ResampleToMono16kWav()` on
 the uploaded audio before transcription. If you see this error, verify you're running a version
-that includes this fix (see `docs/LLM_WIKI.md`'s "Known fixes" section).
+that includes this fix (see [docs/wiki/docker-packaging.md](wiki/docker-packaging.md)'s "Known
+fixes" section).
 
 ### Uploading FLAC/MP3/OGG/etc. to `/v1/audio/transcriptions` fails or crashes (fixed)
 
@@ -691,6 +692,35 @@ curl http://localhost:5768/api/server-info
 # {"ttsEnabled": true, "asrEnabled": false}
 ```
 Restart the container with `SERVER_MODE=asr` or `SERVER_MODE=both`.
+
+### Live Transcription (mic/tab audio) fails with "Cannot read properties of undefined (reading 'getUserMedia')"
+
+**Cause:** Browsers only expose `navigator.mediaDevices` on secure contexts - HTTPS, or
+`http://localhost`. Serving the frontend over plain HTTP on any other hostname (e.g.
+`http://your-lan-host:5768`) makes `navigator.mediaDevices` itself `undefined`, not just its
+capture methods - this is a browser platform security restriction, not an app bug.
+
+**Solution:** Serve the frontend over HTTPS (e.g. via a reverse proxy with a TLS certificate - see
+the nginx example in [docs/CONFIGURATION.md](CONFIGURATION.md)), or access it via
+`http://localhost:5768` if the browser and server are on the same machine. `LiveTranscription.vue`
+now shows this exact explanation instead of a raw JS error when it detects the missing API.
+
+### `GET /v1/audio/transcriptions/stream` (live transcription) returns 404 or 501
+
+**404 ("The requested model was not found")**: the `model` query parameter was missing or didn't
+match a real model name - the endpoint requires `?model=<name>` (e.g.
+`?model=whisper-base`), it is not optional the way it is for some other fields. Double-check any
+client script's WebSocket URL includes it.
+
+**501 ("Streaming transcription requires in-process ASR mode")**: live transcription only works
+when `AsrWorkerOptions__Enabled=false` (in-process mode) - the default `docker-compose.yml` runs
+worker mode (`AsrWorkerOptions__Enabled=true`), under which this always 501s. `GET
+/api/asr-models`'s `supportsStreaming` field reflects this automatically (it's `false` whenever
+`AsrWorkerOptions__Enabled=true`, even for models that support streaming in principle), so the
+frontend hides the Live Transcription tab in that case rather than showing a broken button. Set
+`AsrWorkerOptions__Enabled=false` to use live transcription today; worker-mode gRPC streaming
+support is tracked as a future phase in
+[docs/ASR_IMPLEMENTATION_PLAN.md](ASR_IMPLEMENTATION_PLAN.md).
 
 ---
 

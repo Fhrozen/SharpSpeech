@@ -1,14 +1,21 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { TranscriptionMetrics } from '../types'
+import type { TranscriptionMetrics, TranscriptionSegment } from '../types'
 
 const props = defineProps<{
   text: string | null
   metrics: TranscriptionMetrics
+  segments?: TranscriptionSegment[]
   loading?: boolean
 }>()
 
 const copied = ref(false)
+
+function formatTimestamp(seconds: number): string {
+  const minutes = Math.floor(seconds / 60)
+  const remainder = (seconds % 60).toFixed(1)
+  return `${minutes}:${remainder.padStart(4, '0')}`
+}
 
 async function copyText() {
   if (!props.text) return
@@ -46,7 +53,19 @@ async function copyText() {
       </div>
     </div>
 
-    <div class="transcription-text-row">
+    <div v-if="segments && segments.length > 0" class="transcription-segments">
+      <div v-for="segment in segments" :key="segment.id" class="transcription-segment-row">
+        <span class="segment-timestamp">{{ formatTimestamp(segment.start) }}–{{ formatTimestamp(segment.end) }}</span>
+        <span class="segment-text">{{ segment.text }}</span>
+      </div>
+      <div class="transcription-text-row">
+        <button class="copy-btn" @click="copyText" :title="copied ? 'Copied!' : 'Copy full text'">
+          {{ copied ? '✓' : '⍧' }} Copy full text
+        </button>
+      </div>
+    </div>
+
+    <div v-else class="transcription-text-row">
       <p class="transcription-text">{{ text }}</p>
       <button class="copy-btn" @click="copyText" :title="copied ? 'Copied!' : 'Copy text'">
         {{ copied ? '✓' : '⧉' }}
@@ -142,5 +161,35 @@ async function copyText() {
 .copy-btn:hover {
   border-color: #fbbf24;
   color: #fbbf24;
+}
+
+.transcription-segments {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.transcription-segment-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  background: #000000;
+  border: 1px solid #333333;
+  border-radius: 0.25rem;
+  padding: 0.6rem 0.75rem;
+}
+
+.segment-timestamp {
+  flex-shrink: 0;
+  color: #fbbf24;
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+.segment-text {
+  color: #ffffff;
+  font-family: monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>

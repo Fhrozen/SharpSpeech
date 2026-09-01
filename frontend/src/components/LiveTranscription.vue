@@ -21,8 +21,19 @@ let socket: WebSocket | null = null
 
 const workletUrl = new URL('../audio-worklets/pcm-capture-processor.js', import.meta.url)
 
+// Browsers only expose navigator.mediaDevices on secure contexts (HTTPS, or localhost) - a plain
+// HTTP origin on a LAN hostname makes it undefined entirely, not just its capture methods.
+const SECURE_CONTEXT_ERROR =
+  'Microphone/tab-audio capture requires a secure context (HTTPS, or http://localhost). ' +
+  'This page is served over an insecure origin, so the browser disables capture entirely.'
+
 async function startMicrophone() {
   errorMessage.value = ''
+  if (!navigator.mediaDevices?.getUserMedia) {
+    errorMessage.value = SECURE_CONTEXT_ERROR
+    return
+  }
+
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     await startStreaming(stream)
@@ -33,8 +44,10 @@ async function startMicrophone() {
 
 async function startTabAudio() {
   errorMessage.value = ''
-  if (!navigator.mediaDevices.getDisplayMedia) {
-    errorMessage.value = 'This browser does not support capturing tab/system audio.'
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    errorMessage.value = navigator.mediaDevices
+      ? 'This browser does not support capturing tab/system audio.'
+      : SECURE_CONTEXT_ERROR
     return
   }
 

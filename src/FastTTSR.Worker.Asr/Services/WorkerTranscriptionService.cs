@@ -39,12 +39,12 @@ public sealed class WorkerTranscriptionService : WorkerTranscription.WorkerTrans
         if (string.Equals(request.Engine, "nemotron-3.5", StringComparison.OrdinalIgnoreCase))
         {
             var engine = GetOrCreateNemotronEngine(request);
-            (text, detectedLanguage) = await Task.Run(() => engine.Transcribe(audioBytes, language), context.CancellationToken);
+            (text, detectedLanguage, _) = await Task.Run(() => engine.Transcribe(audioBytes, language), context.CancellationToken);
         }
         else
         {
             var engine = GetOrCreateWhisperEngine(request);
-            (text, detectedLanguage) = await engine.TranscribeAsync(audioBytes, language, context.CancellationToken);
+            (text, detectedLanguage, _) = await engine.TranscribeAsync(audioBytes, language, context.CancellationToken);
         }
 
         var processingTime = (DateTime.UtcNow - startTime).TotalSeconds;

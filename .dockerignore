@@ -3,7 +3,9 @@
 **/node_modules/
 frontend/dist/
 model-cache/
+.docker-cache/
 test-results/
 .git/
 .vs/
 .vscode/
+.github/

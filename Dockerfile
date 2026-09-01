@@ -31,7 +31,7 @@ ENV ESPEAK_DATA_DIR=/app/assets/espeak-ng-data
 
 # espeak-ng (Kokoro TTS phonemization) + libgomp1 (Whisper.net's native ggml-cpu library needs OpenMP)
 RUN apt-get update && \
-    apt-get install -y libespeak-ng1 espeak-ng-data libgomp1 && \
+    apt-get install -y --no-install-recommends libespeak-ng1 espeak-ng-data libgomp1 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -53,7 +53,7 @@ ENTRYPOINT ["dotnet", "FastTTSR.Api.dll"]
 FROM runtime-base AS runtime-asr
 # ffmpeg normalizes any uploaded audio format (FLAC, MP3, OGG, WEBM, M4A, ...) to WAV before ASR.
 RUN apt-get update && \
-    apt-get install -y ffmpeg && \
+    apt-get install -y --no-install-recommends ffmpeg && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=backend-build /out/worker-asr/ ./worker-asr/
@@ -70,7 +70,7 @@ ENTRYPOINT ["dotnet", "FastTTSR.Api.dll"]
 FROM runtime-base AS runtime-all
 # ffmpeg normalizes any uploaded audio format (FLAC, MP3, OGG, WEBM, M4A, ...) to WAV before ASR.
 RUN apt-get update && \
-    apt-get install -y ffmpeg && \
+    apt-get install -y --no-install-recommends ffmpeg && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=backend-build /out/worker/ ./worker/

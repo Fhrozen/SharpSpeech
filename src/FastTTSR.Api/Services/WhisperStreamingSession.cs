@@ -61,7 +61,7 @@ public sealed class WhisperStreamingSession(WhisperAsrEngine engine, string? lan
     private async Task<string> RunPassAsync(CancellationToken cancellationToken)
     {
         var wavBytes = WavAudioUtils.WrapPcm16MonoAsWav(_pcm.ToArray(), SampleRateValue);
-        var (text, _) = await engine.TranscribeAsync(wavBytes, language, cancellationToken);
+        var (text, _, _) = await engine.TranscribeAsync(wavBytes, language, cancellationToken);
         return text;
     }
 

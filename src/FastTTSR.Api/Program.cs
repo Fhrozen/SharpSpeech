@@ -1,6 +1,7 @@
 using FastTTSR.Api.Contracts;
 using FastTTSR.Api.Options;
 using FastTTSR.Api.Services;
+using Microsoft.Extensions.Options;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -380,8 +381,12 @@ app.MapPost("/v1/audio/speech", async (
 
 if (asrEnabled)
 {
-app.MapGet("/api/asr-models", (IAsrModelCatalog asrModelCatalog) =>
+app.MapGet("/api/asr-models", (IAsrModelCatalog asrModelCatalog, IOptions<AsrWorkerOptions> asrWorkerOptions) =>
 {
+    // Live streaming only works in-process today (see /v1/audio/transcriptions/stream) - don't
+    // advertise it to the frontend when the server can't actually serve it.
+    var streamingActuallyAvailable = !asrWorkerOptions.Value.Enabled;
+
     var models = asrModelCatalog.GetSupportedModels().Select(m => new AsrModelDefinitionResponse(
         m.Name,
         m.DisplayName,
@@ -389,14 +394,14 @@ app.MapGet("/api/asr-models", (IAsrModelCatalog asrModelCatalog) =>
         m.SupportedLanguages,
         m.SupportsLanguageAutoDetect,
         m.SupportsVad,
-        m.SupportsStreaming));
+        m.SupportsStreaming && streamingActuallyAvailable));
 
     return Results.Ok(models);
 })
     .WithName("GetAsrModels")
     .WithTags("Models")
     .WithSummary("List available ASR models")
-    .WithDescription("Returns detailed information about all available speech-to-text models, including supported languages")
+    .WithDescription("Returns detailed information about all available speech-to-text models, including supported languages. supportsStreaming reflects whether live transcription can actually be used right now (requires AsrWorkerOptions__Enabled=false).")
     .Produces<IEnumerable<AsrModelDefinitionResponse>>(200);
 
 app.MapPost("/v1/audio/transcriptions", async (
@@ -419,6 +424,9 @@ app.MapPost("/v1/audio/transcriptions", async (
     var responseFormat = form["response_format"].ToString();
     var useVadRaw = form["use_vad"].ToString();
     var enableVad = string.Equals(useVadRaw, "true", StringComparison.OrdinalIgnoreCase) || useVadRaw == "1";
+    var includeSegments = string.Equals(responseFormat, "verbose_json", StringComparison.OrdinalIgnoreCase);
+    var minSegmentDurationRaw = form["min_segment_duration"].ToString();
+    var minSegmentDuration = double.TryParse(minSegmentDurationRaw, out var parsedMinDuration) ? parsedMinDuration : 0.5;
 
     if (file is null || file.Length == 0)
     {
@@ -453,7 +461,9 @@ app.MapPost("/v1/audio/transcriptions", async (
         Model = modelName,
         Language = string.IsNullOrWhiteSpace(language) ? null : language,
         ResponseFormat = string.IsNullOrWhiteSpace(responseFormat) ? "json" : responseFormat,
-        EnableVad = enableVad
+        EnableVad = enableVad,
+        IncludeSegments = includeSegments,
+        MinSegmentDurationSeconds = minSegmentDuration
     };
 
     var modelDirectory = await modelCache.EnsureModelAsync(model!, cancellationToken);
@@ -464,12 +474,23 @@ app.MapPost("/v1/audio/transcriptions", async (
     httpContext.Response.Headers["X-RTF"] = result.Rtf.ToString("F3");
     httpContext.Response.Headers["X-Character-Count"] = result.CharacterCount.ToString();
 
+    if (includeSegments)
+    {
+        return Results.Ok(new
+        {
+            text = result.Text,
+            language = result.DetectedLanguage,
+            duration = result.AudioDurationSeconds,
+            segments = (result.Segments ?? []).Select(s => new { id = s.Id, start = s.Start, end = s.End, text = s.Text })
+        });
+    }
+
     return Results.Ok(new { text = result.Text });
 })
     .WithName("CreateTranscription")
     .WithTags("OpenAI Compatible")
     .WithSummary("Transcribe audio to text")
-    .WithDescription("Generates a transcription from the uploaded audio file using the specified ASR model. OpenAI-compatible endpoint. Multipart/form-data fields: file (required, any ffmpeg-decodable format - WAV, FLAC, MP3, OGG, WEBM, M4A, etc. - normalized server-side before transcription), model (required), language (optional), response_format (optional), use_vad (optional, `true`/`1` to enable voice-activity-detection gating - only affects nemotron-3.5, ignored by whisper-base). Supports whisper-base (multilingual, auto language detection) and nemotron-3.5 (40 language-locales).")
+    .WithDescription("Generates a transcription from the uploaded audio file using the specified ASR model. OpenAI-compatible endpoint. Multipart/form-data fields: file (required, any ffmpeg-decodable format - WAV, FLAC, MP3, OGG, WEBM, M4A, etc. - normalized server-side before transcription), model (required), language (optional), response_format (optional, `json` (default) or `verbose_json` - the latter adds a `segments` array of `{ id, start, end, text }` timestamped segments to the response), min_segment_duration (optional, seconds, default 0.5 - segments shorter than this are merged into a neighboring segment rather than dropped), use_vad (optional, `true`/`1` to enable voice-activity-detection gating - only affects nemotron-3.5, ignored by whisper-base; also makes Nemotron's segments reflect detected speech regions instead of one full-clip segment). Supports whisper-base (multilingual, auto language detection) and nemotron-3.5 (40 language-locales).")
     .Accepts<IFormFile>("multipart/form-data")
     .Produces<object>(200)
     .Produces<ErrorResponse>(400)

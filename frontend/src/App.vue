@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import type { TtsModel, SynthesisRequest, SynthesisMetrics, TextPreset, StatusType, AsrModel, TranscriptionMetrics, ServerInfo } from './types'
+import type { TtsModel, SynthesisRequest, SynthesisMetrics, TextPreset, StatusType, AsrModel, TranscriptionMetrics, TranscriptionSegment, ServerInfo } from './types'
 import { presetTexts } from './preset-texts'
 
 import AppHeader from './components/AppHeader.vue'
@@ -207,6 +207,7 @@ function downloadAudio() {
 // --- ASR (Speech to Text) ---
 
 const asrModels = ref<AsrModel[]>([])
+const asrMode = ref<'offline' | 'live'>('offline')
 const asrForm = reactive({
   model: '',
   language: '',
@@ -214,6 +215,9 @@ const asrForm = reactive({
   file: null as File | null
 })
 const transcriptionText = ref<string | null>(null)
+const transcriptionSegments = ref<TranscriptionSegment[]>([])
+const showTimestamps = ref(false)
+const minSegmentDuration = ref(0.5)
 const asrLoading = ref(false)
 const asrError = ref('')
 const asrStatusMessage = ref('')
@@ -257,6 +261,10 @@ function syncAsrModelDefaults() {
 
   if (!model.supportsVad) {
     asrForm.enableVad = false
+  }
+
+  if (!model.supportsStreaming) {
+    asrMode.value = 'offline'
   }
 }
 
@@ -303,6 +311,7 @@ async function transcribe() {
   asrLoading.value = true
   asrError.value = ''
   transcriptionText.value = null
+  transcriptionSegments.value = []
 
   updateAsrStatus('loading', 'Transcribing', 'Transcribing audio...')
 
@@ -316,6 +325,10 @@ async function transcribe() {
     }
     if (asrForm.enableVad) {
       payload.append('use_vad', 'true')
+    }
+    if (showTimestamps.value) {
+      payload.append('response_format', 'verbose_json')
+      payload.append('min_segment_duration', String(minSegmentDuration.value))
     }
 
     const response = await fetch('/v1/audio/transcriptions', {
@@ -337,6 +350,7 @@ async function transcribe() {
 
     const data = await response.json()
     transcriptionText.value = data.text || ''
+    transcriptionSegments.value = data.segments || []
 
     updateAsrStatus('success', 'Complete', 'Transcription complete!')
     setTimeout(() => {
@@ -468,48 +482,81 @@ onMounted(async () => {
                 <input type="checkbox" v-model="asrForm.enableVad" />
                 Voice-activity detection (skip silent audio)
               </label>
-
-              <AudioFileInput v-model="asrForm.file" />
             </div>
 
-            <div class="demo-output-section">
+            <div v-if="selectedAsrModel?.supportsStreaming" class="sub-tab-switcher">
               <button
-                class="demo-generate-btn"
-                :disabled="!canTranscribe"
-                @click="transcribe"
+                class="sub-tab-btn"
+                :class="{ active: asrMode === 'offline' }"
+                @click="asrMode = 'offline'"
               >
-                <span class="icon">🎙️</span>
-                <span class="text">{{ asrLoading ? 'Transcribing...' : 'Transcribe' }}</span>
+                Offline Transcription
+              </button>
+              <button
+                class="sub-tab-btn"
+                :class="{ active: asrMode === 'live' }"
+                @click="asrMode = 'live'"
+              >
+                Live Transcription
               </button>
             </div>
 
-            <div class="demo-results">
-              <TranscriptionResult
-                :text="transcriptionText"
-                :metrics="transcriptionMetrics"
-                :loading="asrLoading"
+            <template v-if="asrMode === 'offline'">
+              <div class="demo-controls">
+                <AudioFileInput v-model="asrForm.file" />
+
+                <label class="vad-toggle">
+                  <input type="checkbox" v-model="showTimestamps" />
+                  Show timestamps
+                </label>
+
+                <label v-if="showTimestamps" class="min-duration-field">
+                  Min segment duration (s)
+                  <input type="number" step="0.1" min="0.1" v-model.number="minSegmentDuration" />
+                </label>
+              </div>
+
+              <div class="demo-output-section">
+                <button
+                  class="demo-generate-btn"
+                  :disabled="!canTranscribe"
+                  @click="transcribe"
+                >
+                  <span class="icon">🎙️</span>
+                  <span class="text">{{ asrLoading ? 'Transcribing...' : 'Transcribe' }}</span>
+                </button>
+              </div>
+
+              <div class="demo-results">
+                <TranscriptionResult
+                  :text="transcriptionText"
+                  :metrics="transcriptionMetrics"
+                  :segments="transcriptionSegments"
+                  :loading="asrLoading"
+                />
+              </div>
+
+              <StatusMessage
+                :message="asrStatusMessage"
+                :title="asrStatusTitle"
+                :type="asrStatusClass"
               />
-            </div>
 
-            <StatusMessage
-              :message="asrStatusMessage"
-              :title="asrStatusTitle"
-              :type="asrStatusClass"
-            />
+              <div v-if="asrError" class="demo-error">
+                {{ asrError }}
+              </div>
+            </template>
 
-            <div v-if="asrError" class="demo-error">
-              {{ asrError }}
-            </div>
-
-            <div v-if="selectedAsrModel?.supportsStreaming" class="live-section">
-              <hr class="live-divider" />
-              <h3 class="live-heading">Live Transcription</h3>
-              <LiveTranscription
-                :model="asrForm.model"
-                :language="asrForm.language"
-                :enable-vad="asrForm.enableVad"
-              />
-            </div>
+            <!-- v-if (not v-show): unmounting stops any active mic/tab capture via LiveTranscription's own cleanup -->
+            <template v-else-if="asrMode === 'live' && selectedAsrModel?.supportsStreaming">
+              <div class="live-section">
+                <LiveTranscription
+                  :model="asrForm.model"
+                  :language="asrForm.language"
+                  :enable-vad="asrForm.enableVad"
+                />
+              </div>
+            </template>
           </div>
         </template>
       </div>
@@ -604,23 +651,53 @@ body {
   cursor: pointer;
 }
 
+.min-duration-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #cccccc;
+  font-size: 0.9rem;
+}
+
+.min-duration-field input[type='number'] {
+  width: 4.5rem;
+  background: #000000;
+  color: #ffffff;
+  border: 1px solid #333333;
+  border-radius: 0.25rem;
+  padding: 0.25rem 0.4rem;
+}
+
 .live-section {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
-.live-divider {
-  border: none;
-  border-top: 1px solid #333333;
-  margin: 0.5rem 0;
+.sub-tab-switcher {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 1px solid #222222;
 }
 
-.live-heading {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 500;
+.sub-tab-btn {
+  background: transparent;
+  color: #777777;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.sub-tab-btn:hover {
   color: #ffffff;
+}
+
+.sub-tab-btn.active {
+  color: #fbbf24;
+  border-bottom-color: #fbbf24;
 }
 
 .demo-output-section {

@@ -1,4 +1,5 @@
 using System.Text;
+using FastTTSR.Api.Models;
 using Whisper.net;
 
 namespace FastTTSR.Api.Services;
@@ -17,7 +18,7 @@ public sealed class WhisperAsrEngine : IDisposable
         _factory = WhisperFactory.FromPath(ggmlModelPath);
     }
 
-    public async Task<(string Text, string? DetectedLanguage)> TranscribeAsync(
+    public async Task<(string Text, string? DetectedLanguage, IReadOnlyList<TranscriptionSegment> Segments)> TranscribeAsync(
         byte[] wavBytes, string? language, CancellationToken cancellationToken)
     {
         var builderFactory = _factory.CreateBuilder()
@@ -30,7 +31,9 @@ public sealed class WhisperAsrEngine : IDisposable
         using var audioStream = new MemoryStream(resampledWav);
 
         var textBuilder = new StringBuilder();
+        var segments = new List<TranscriptionSegment>();
         string? detectedLanguage = string.IsNullOrWhiteSpace(language) ? null : language;
+        var segmentId = 1;
 
         await foreach (var segment in processor.ProcessAsync(audioStream, cancellationToken))
         {
@@ -39,11 +42,13 @@ public sealed class WhisperAsrEngine : IDisposable
                 textBuilder.Append(' ');
             }
 
-            textBuilder.Append(segment.Text.Trim());
+            var segmentText = segment.Text.Trim();
+            textBuilder.Append(segmentText);
             detectedLanguage ??= segment.Language;
+            segments.Add(new TranscriptionSegment(segmentId++, segment.Start.TotalSeconds, segment.End.TotalSeconds, segmentText));
         }
 
-        return (textBuilder.ToString().Trim(), detectedLanguage);
+        return (textBuilder.ToString().Trim(), detectedLanguage, segments);
     }
 
     public void Dispose()

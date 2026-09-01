@@ -26,12 +26,15 @@ public sealed class WhisperAsrTranscriber : IAsrTranscriber, IIdleTrackingTransc
         var startTime = DateTime.UtcNow;
         var engine = GetOrCreateEngine(model, modelDirectory);
 
-        var (text, detectedLanguage) = await engine.TranscribeAsync(audioBytes, request.Language, cancellationToken);
+        var (text, detectedLanguage, rawSegments) = await engine.TranscribeAsync(audioBytes, request.Language, cancellationToken);
 
         var processingTime = (DateTime.UtcNow - startTime).TotalSeconds;
         var audioDuration = WavAudioUtils.GetDurationSeconds(audioBytes);
+        var segments = request.IncludeSegments
+            ? SegmentMerger.MergeShortSegments(rawSegments, request.MinSegmentDurationSeconds)
+            : null;
 
-        return new TranscriptionResult(text, detectedLanguage, processingTime, audioDuration, text.Length);
+        return new TranscriptionResult(text, detectedLanguage, processingTime, audioDuration, text.Length, segments);
     }
 
     public IStreamingTranscriptionSession CreateStreamingSession(AsrModelDefinition model, string modelDirectory, string? language)

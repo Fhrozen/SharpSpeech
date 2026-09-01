@@ -10,4 +10,6 @@ public sealed class AudioTranscriptionRequest
     public string? Language { get; init; }
     public string ResponseFormat { get; init; } = "json";
     public bool EnableVad { get; init; }
+    public bool IncludeSegments { get; init; }
+    public double MinSegmentDurationSeconds { get; init; } = 0.5;
 }

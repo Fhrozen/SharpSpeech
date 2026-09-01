@@ -9,11 +9,15 @@ engines alongside the existing TTS pipeline, following the plan already agreed w
 
 ## Required reading before doing anything
 
-1. [docs/LLM_WIKI.md](../../docs/LLM_WIKI.md) — condensed architecture reference. Read this first,
-   every session, even if you think you remember it.
+1. [docs/LLM_WIKI.md](../../docs/LLM_WIKI.md) — condensed architecture summary/index. Read this
+   first, every session, then follow its links into `docs/wiki/*.md` for the detail relevant to
+   the phase you're doing.
 2. [docs/ASR_IMPLEMENTATION_PLAN.md](../../docs/ASR_IMPLEMENTATION_PLAN.md) — the authoritative,
-   git-tracked, phase-by-phase plan with per-phase inputs/outputs/status. This is the source of
-   truth for what's done and what's next, not chat history or memory.
+   git-tracked, phase-by-phase plan with per-phase inputs/outputs/status (condensed; full detail
+   for already-implemented phases lives in
+   [docs/ASR_IMPLEMENTATION_HISTORY.md](../../docs/ASR_IMPLEMENTATION_HISTORY.md), linked per
+   phase). This is the source of truth for what's done and what's next, not chat history or
+   memory.
 
 ## Process (do not deviate without asking the user)
 
@@ -27,11 +31,15 @@ engines alongside the existing TTS pipeline, following the plan already agreed w
    `dotnet` CLI in this dev environment — always use the `./dotnet.sh` Docker wrapper for
    build/test/publish/restore).
 5. When the phase's code changes are done and building cleanly:
-   - Update `docs/LLM_WIKI.md`'s relevant section with what you actually built (architecture,
-     file names, method signatures) — not deferred to a later pass.
+   - Update the relevant `docs/wiki/*.md` detail file with what you actually built (architecture,
+     file names, method signatures) — not deferred to a later pass. Update `docs/LLM_WIKI.md`'s
+     index table too if you added a new topic file.
    - Update `docs/ASR_IMPLEMENTATION_PLAN.md`: set the phase's status to
      `✅ Done (awaiting acceptance)` and fill in "Actual output files" with the real paths touched
      (add this subsection if the phase only had "Planned changes"/"Expected output files" so far).
+     Once a phase is later `✅ Accepted`, move its full block into
+     `docs/ASR_IMPLEMENTATION_HISTORY.md` and replace it in the plan doc with a short summary +
+     link, following the existing pattern for earlier phases.
 6. Report a concise summary to the user (what changed, files touched, build/test results) and
    **stop — wait for explicit acceptance** before starting the next phase. When the user accepts,
    flip that phase's status to `✅ Accepted` in the plan doc as your first action next turn.
@@ -49,8 +57,9 @@ engines alongside the existing TTS pipeline, following the plan already agreed w
   "Reference files" section at the bottom of the plan doc.
 - Comments in code: one short line only, stating what the code cannot show on its own. No
   multi-paragraph doc comments, no restating the next line.
-- Do not create additional markdown files beyond `docs/LLM_WIKI.md` and
-  `docs/ASR_IMPLEMENTATION_PLAN.md` unless the user asks for one.
+- Do not create additional markdown files beyond `docs/LLM_WIKI.md`, `docs/wiki/*.md`,
+  `docs/ASR_IMPLEMENTATION_PLAN.md`, and `docs/ASR_IMPLEMENTATION_HISTORY.md` unless the user asks
+  for one.
 
 ## Output format
 

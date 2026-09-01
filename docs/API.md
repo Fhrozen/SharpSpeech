@@ -319,8 +319,9 @@ Content-Type: multipart/form-data
 
 file=@sample.wav
 model=whisper-base
-language=en          (optional)
-response_format=json (optional, currently the only supported value)
+language=en                    (optional)
+response_format=verbose_json   (optional)
+min_segment_duration=0.5       (optional)
 ```
 
 **Form Fields:**
@@ -330,15 +331,34 @@ response_format=json (optional, currently the only supported value)
 | `file` | **Yes** | - | Audio file to transcribe. Any format `ffmpeg` can decode (WAV, FLAC, MP3, OGG, WEBM, M4A, etc.) - normalized server-side to PCM16 mono WAV before either engine sees it |
 | `model` | **Yes** | - | Model ID (`whisper-base`, `nemotron-3.5`) |
 | `language` | No | Auto-detect | ISO language code hint (e.g. `en`, `ja`), or `auto` to explicitly request auto-detection; both models support auto-detection if omitted |
-| `response_format` | No | `json` | Currently only `json` is implemented |
-| `use_vad` | No | `false` | `true`/`1` to enable voice-activity-detection gating (skips inference on silent audio chunks) - only affects `nemotron-3.5` (`supportsVad: true`); ignored by models that don't support it |
+| `response_format` | No | `json` | `json` returns `{ text }` only. `verbose_json` (OpenAI-compatible name) additionally returns a `segments` array of timestamped segments - see below |
+| `min_segment_duration` | No | `0.5` | Seconds. Only used with `response_format=verbose_json`. Segments shorter than this are merged into a neighboring segment (never dropped) |
+| `use_vad` | No | `false` | `true`/`1` to enable voice-activity-detection gating (skips inference on silent audio chunks) - only affects `nemotron-3.5` (`supportsVad: true`); ignored by models that don't support it. With `response_format=verbose_json`, Nemotron's segments reflect the detected speech regions when this is enabled, or one segment spanning the whole clip when it isn't |
 
-**Response:**
+**Response (`response_format=json`, default):**
 ```json
 {
   "text": "Hello, this is a test of the transcription system."
 }
 ```
+
+**Response (`response_format=verbose_json`):**
+```json
+{
+  "text": "Hello, this is a test of the transcription system.",
+  "language": "en",
+  "duration": 3.1,
+  "segments": [
+    { "id": 1, "start": 0.0, "end": 1.6, "text": "Hello, this is a test" },
+    { "id": 2, "start": 1.6, "end": 3.1, "text": "of the transcription system." }
+  ]
+}
+```
+Abbreviated compared to OpenAI's own `verbose_json` shape (only `id`/`start`/`end`/`text` per
+segment - no `tokens`/`avg_logprob`/etc.). **Worker-mode note**: segment timestamps are currently
+only populated when the server runs ASR in-process (`AsrWorkerOptions__Enabled=false`) - in worker
+mode (the default), `segments` is returned as an empty array since the worker's gRPC protocol
+doesn't carry segment data yet.
 
 **Response Headers:**
 ```

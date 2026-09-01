@@ -57,6 +57,13 @@ export interface TranscriptionMetrics {
   characterCount: string
 }
 
+export interface TranscriptionSegment {
+  id: number
+  start: number
+  end: number
+  text: string
+}
+
 export interface ServerInfo {
   ttsEnabled: boolean
   asrEnabled: boolean

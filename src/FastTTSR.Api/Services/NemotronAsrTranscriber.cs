@@ -26,12 +26,15 @@ public sealed class NemotronAsrTranscriber : IAsrTranscriber, IIdleTrackingTrans
         var startTime = DateTime.UtcNow;
         var engine = GetOrCreateEngine(model, modelDirectory);
 
-        var (text, detectedLanguage) = engine.Transcribe(audioBytes, request.Language, request.EnableVad);
+        var (text, detectedLanguage, rawSegments) = engine.Transcribe(audioBytes, request.Language, request.EnableVad);
 
         var processingTime = (DateTime.UtcNow - startTime).TotalSeconds;
         var audioDuration = WavAudioUtils.GetDurationSeconds(audioBytes);
+        var segments = request.IncludeSegments
+            ? SegmentMerger.MergeShortSegments(rawSegments, request.MinSegmentDurationSeconds)
+            : null;
 
-        return Task.FromResult(new TranscriptionResult(text, detectedLanguage, processingTime, audioDuration, text.Length));
+        return Task.FromResult(new TranscriptionResult(text, detectedLanguage, processingTime, audioDuration, text.Length, segments));
     }
 
     public IStreamingTranscriptionSession CreateStreamingSession(AsrModelDefinition model, string modelDirectory, string? language, bool enableVad)

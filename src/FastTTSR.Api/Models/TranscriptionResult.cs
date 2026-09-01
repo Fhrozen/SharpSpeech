@@ -5,7 +5,8 @@ public sealed record TranscriptionResult(
     string? DetectedLanguage,
     double ProcessingTimeSeconds,
     double AudioDurationSeconds,
-    int CharacterCount)
+    int CharacterCount,
+    IReadOnlyList<TranscriptionSegment>? Segments = null)
 {
     public double Rtf => ProcessingTimeSeconds / AudioDurationSeconds;
 }

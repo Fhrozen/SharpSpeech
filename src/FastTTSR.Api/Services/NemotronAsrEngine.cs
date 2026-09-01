@@ -1,4 +1,5 @@
 using System.Text.Json;
+using FastTTSR.Api.Models;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 
@@ -117,23 +118,67 @@ public sealed class NemotronAsrEngine : IDisposable
         logEps: _logEps,
         preEncodeCacheSize: _preEncodeCacheSize);
 
-    public (string Text, string? DetectedLanguage) Transcribe(byte[] wavBytes, string? language, bool enableVad = false)
+    public (string Text, string? DetectedLanguage, IReadOnlyList<TranscriptionSegment> Segments) Transcribe(byte[] wavBytes, string? language, bool enableVad = false)
     {
         var samples = WavAudioUtils.ReadMonoFloat(wavBytes, _sampleRate);
         var languageId = NemotronLanguages.Resolve(language);
 
-        var encoderOutputs = RunEncoderChunks(samples, languageId, enableVad);
-        var tokenIds = RunRnntGreedyDecode(encoderOutputs);
+        var (encoderOutputs, regions) = RunEncoderChunks(samples, languageId, enableVad);
+        var (tokenIds, tokensPerFrame) = RunRnntGreedyDecode(encoderOutputs);
 
         var text = _vocabulary.Decode(tokenIds, out var languageTag);
         // In auto-detect mode the model itself emits the detected language as a leading tag;
         // fall back to it only when the caller didn't already specify a language explicitly.
         var detectedLanguage = language ?? languageTag?.Trim('<', '>');
 
-        return (text, detectedLanguage);
+        var segments = BuildSegments(regions, tokenIds, tokensPerFrame);
+
+        return (text, detectedLanguage, segments);
     }
 
-    private float[][] RunEncoderChunks(float[] samples, long languageId, bool enableVad)
+    /// <summary>Slices the decoded token stream by each region's encoder-frame range (tokens are
+    /// emitted in frame order, so a region's frame range maps to a contiguous token slice) and
+    /// decodes each region's tokens into its own <see cref="TranscriptionSegment"/>. Regions with
+    /// no emitted tokens (e.g. a VAD-kept chunk that produced only blanks) are skipped.</summary>
+    private List<TranscriptionSegment> BuildSegments(
+        List<(int StartFrame, int EndFrame, double StartSeconds, double EndSeconds)> regions,
+        List<int> tokenIds,
+        List<int> tokensPerFrame)
+    {
+        var cumulativeTokens = new int[tokensPerFrame.Count + 1];
+        for (var i = 0; i < tokensPerFrame.Count; i++)
+        {
+            cumulativeTokens[i + 1] = cumulativeTokens[i] + tokensPerFrame[i];
+        }
+
+        var segments = new List<TranscriptionSegment>();
+        var nextId = 1;
+        foreach (var region in regions)
+        {
+            var tokenStart = cumulativeTokens[region.StartFrame];
+            var tokenEnd = cumulativeTokens[region.EndFrame];
+            if (tokenEnd <= tokenStart)
+            {
+                continue;
+            }
+
+            var regionText = _vocabulary.Decode(tokenIds.GetRange(tokenStart, tokenEnd - tokenStart));
+            if (string.IsNullOrWhiteSpace(regionText))
+            {
+                continue;
+            }
+
+            segments.Add(new TranscriptionSegment(nextId++, region.StartSeconds, region.EndSeconds, regionText));
+        }
+
+        return segments;
+    }
+
+    /// <summary>Runs the cache-aware encoder loop like the original implementation, additionally
+    /// tracking contiguous "active audio" regions (maximal runs of non-VAD-dropped chunks, or one
+    /// region spanning everything when VAD is disabled) for segment timestamping.</summary>
+    private (float[][] Frames, List<(int StartFrame, int EndFrame, double StartSeconds, double EndSeconds)> Regions) RunEncoderChunks(
+        float[] samples, long languageId, bool enableVad)
     {
         _featureExtractor.Reset();
 
@@ -150,6 +195,10 @@ public sealed class NemotronAsrEngine : IDisposable
         long cacheLastChannelLen = 0;
 
         var allOutputs = new List<float[]>();
+        var regions = new List<(int StartFrame, int EndFrame, double StartSeconds, double EndSeconds)>();
+        var regionStartFrame = -1;
+        var regionStartSeconds = 0.0;
+        var regionEndSeconds = 0.0;
 
         for (var offset = 0; offset < samples.Length; offset += _chunkSamples)
         {
@@ -160,14 +209,36 @@ public sealed class NemotronAsrEngine : IDisposable
 
             if (vadGate?.ShouldDropChunk(chunk) == true)
             {
+                if (regionStartFrame >= 0)
+                {
+                    regions.Add((regionStartFrame, allOutputs.Count, regionStartSeconds, regionEndSeconds));
+                    regionStartFrame = -1;
+                }
+
                 continue; // skip encoder/decoder inference for a chunk classified as silence
             }
 
             var melChunk = _featureExtractor.ProcessChunk(chunk);
-            allOutputs.AddRange(RunEncoderChunk(melChunk, languageId, ref cacheLastChannel, ref cacheLastTime, ref cacheLastChannelLen));
+            var frames = RunEncoderChunk(melChunk, languageId, ref cacheLastChannel, ref cacheLastTime, ref cacheLastChannelLen);
+            if (frames.Length > 0)
+            {
+                if (regionStartFrame < 0)
+                {
+                    regionStartFrame = allOutputs.Count;
+                    regionStartSeconds = offset / (double)_sampleRate;
+                }
+
+                regionEndSeconds = Math.Min(offset + _chunkSamples, samples.Length) / (double)_sampleRate;
+                allOutputs.AddRange(frames);
+            }
         }
 
-        return allOutputs.ToArray();
+        if (regionStartFrame >= 0)
+        {
+            regions.Add((regionStartFrame, allOutputs.Count, regionStartSeconds, regionEndSeconds));
+        }
+
+        return (allOutputs.ToArray(), regions);
     }
 
     /// <summary>Runs the encoder on one already-extracted mel chunk, threading the cache tensors
@@ -220,19 +291,22 @@ public sealed class NemotronAsrEngine : IDisposable
     private SileroVadEngine GetOrCreateVadEngine() =>
         _vadEngine ??= new SileroVadEngine(Path.Combine(_modelDirectory, _vadFilename), _sampleRate);
 
-    private List<int> RunRnntGreedyDecode(float[][] encoderOutputs)
+    private (List<int> TokenIds, List<int> TokensPerFrame) RunRnntGreedyDecode(float[][] encoderOutputs)
     {
         var tokenIds = new List<int>();
+        var tokensPerFrame = new List<int>(encoderOutputs.Length);
         long lastToken = _blankId;
         var hState = new float[_decoderLayers * _decoderHidden];
         var cState = new float[_decoderLayers * _decoderHidden];
 
         foreach (var frame in encoderOutputs)
         {
-            tokenIds.AddRange(DecodeFrame(frame, ref lastToken, ref hState, ref cState));
+            var frameTokens = DecodeFrame(frame, ref lastToken, ref hState, ref cState);
+            tokenIds.AddRange(frameTokens);
+            tokensPerFrame.Add(frameTokens.Count);
         }
 
-        return tokenIds;
+        return (tokenIds, tokensPerFrame);
     }
 
     /// <summary>Greedily decodes one encoder frame, threading the RNNT predictor's LSTM state (by

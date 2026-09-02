@@ -70,7 +70,11 @@ services:
     networks:
       - fastttsr-network
 
-  # Optional: nginx reverse proxy
+  # Optional: nginx reverse proxy - only needed for a publicly reachable domain (real
+  # Let's Encrypt/ACME certs, rate limiting) or terminating TLS for multiple services at once.
+  # For LAN/internal HTTPS, skip this and use the simpler Kestrel-native flow instead: run
+  # ./generate-cert.sh <your-lan-hostname-or-ip> and set HTTPS_PORT/CERT_PASSWORD in .env - see
+  # "HTTPS / TLS" in docs/CONFIGURATION.md. This nginx.conf/./ssl example isn't shipped in the repo.
   nginx:
     image: nginx:alpine
     restart: unless-stopped

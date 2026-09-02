@@ -15,6 +15,9 @@ var urls = new List<string> { $"http://+:{httpPort}" };
 if (!string.IsNullOrWhiteSpace(httpsPort))
 {
     urls.Add($"https://+:{httpsPort}");
+    // Kestrel loads the actual certificate from Kestrel:Certificates:Default config (env vars
+    // Kestrel__Certificates__Default__Path/Password) - no certificate-loading code needed here.
+    builder.Services.AddHttpsRedirection(options => options.HttpsPort = int.Parse(httpsPort));
 }
 
 builder.WebHost.UseUrls(urls.ToArray());
@@ -29,6 +32,7 @@ builder.Services.Configure<ModelCacheOptions>(builder.Configuration.GetSection(M
 builder.Services.Configure<ModelIdleMonitorOptions>(builder.Configuration.GetSection(ModelIdleMonitorOptions.SectionName));
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection(WorkerOptions.SectionName));
 builder.Services.Configure<AsrWorkerOptions>(builder.Configuration.GetSection(AsrWorkerOptions.SectionName));
+builder.Services.Configure<AsrStreamingOptions>(builder.Configuration.GetSection(AsrStreamingOptions.SectionName));
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IModelCache, ModelCache>();
 
@@ -124,6 +128,11 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var app = builder.Build();
+
+if (!string.IsNullOrWhiteSpace(httpsPort))
+{
+    app.UseHttpsRedirection();
+}
 
 // Enable Swagger in all environments
 app.UseSwagger();
@@ -496,6 +505,7 @@ app.MapGet("/v1/audio/transcriptions/stream", async (
     IAsrModelCatalog asrModelCatalog,
     IModelCache modelCache,
     IAsrTranscriber transcriber,
+    Microsoft.Extensions.Options.IOptions<AsrStreamingOptions> streamingOptions,
     CancellationToken cancellationToken) =>
 {
     if (!httpContext.WebSockets.IsWebSocketRequest)
@@ -517,11 +527,18 @@ app.MapGet("/v1/audio/transcriptions/stream", async (
         return;
     }
 
+    var streamingConfig = streamingOptions.Value;
+    var segmentSeconds = streamingConfig.DefaultSegmentSeconds;
+    if (double.TryParse(httpContext.Request.Query["segment_seconds"].ToString(), out var requestedSegmentSeconds))
+    {
+        segmentSeconds = Math.Clamp(requestedSegmentSeconds, streamingConfig.MinSegmentSeconds, streamingConfig.MaxSegmentSeconds);
+    }
+
     // Works identically whether ASR runs in-process or in worker mode - IAsrTranscriber's
     // CreateStreamingSessionAsync hides a duplex gRPC call behind the same interface in worker mode.
     var resolvedLanguage = string.IsNullOrWhiteSpace(language) ? null : language;
     var modelDirectory = await modelCache.EnsureModelAsync(model!, cancellationToken);
-    var session = await transcriber.CreateStreamingSessionAsync(model!, modelDirectory, resolvedLanguage, enableVad, cancellationToken);
+    var session = await transcriber.CreateStreamingSessionAsync(model!, modelDirectory, resolvedLanguage, enableVad, segmentSeconds, cancellationToken);
 
     using var _ = session;
     using var webSocket = await httpContext.WebSockets.AcceptWebSocketAsync();
@@ -531,17 +548,22 @@ app.MapGet("/v1/audio/transcriptions/stream", async (
     .WithTags("OpenAI Compatible")
     .WithSummary("Stream live speech-to-text over WebSocket")
     .WithDescription("WebSocket upgrade endpoint for real-time transcription. Query params: model (required), " +
-        "language (optional), use_vad (optional, nemotron-3.5 only). After upgrading, send binary WebSocket " +
-        "frames of raw 16-bit PCM mono audio at 16kHz (no WAV/container header) - client-captured microphone " +
-        "or tab/system audio must be resampled to this format before sending. The server replies with JSON " +
-        "text frames `{\"type\":\"partial\",\"text\":\"...\"}` as transcript text becomes available (each " +
-        "message carries the full transcript-so-far, not just a delta - simply replace the displayed text). " +
-        "Nemotron uses true cache-aware incremental decoding; Whisper has no incremental API and instead " +
-        "periodically re-transcribes the whole buffered audio so far. Send a text frame `{\"type\":\"end\"}` " +
-        "(or close the socket) to finish - the server replies once more with " +
-        "`{\"type\":\"final\",\"text\":\"...\"}` before closing. Works in both in-process and worker mode. " +
-        "Swagger UI cannot exercise WebSocket endpoints via \"Try it out\"; this description documents the " +
-        "protocol only.");
+        "language (optional), use_vad (optional, nemotron-3.5 only), segment_seconds (optional, default 10, " +
+        "clamped to [5,30] - max seconds of audio before the current segment is force-committed; committed " +
+        "sooner on sentence-ending punctuation). After upgrading, send binary WebSocket frames of raw 16-bit " +
+        "PCM mono audio at 16kHz (no WAV/container header) - client-captured microphone or tab/system audio " +
+        "must be resampled to this format before sending. The server replies with JSON text frames, each " +
+        "scoped to the CURRENT segment only (never the whole conversation, so message size stays bounded " +
+        "regardless of utterance length): `{\"type\":\"partial\",\"text\":\"...\"}` as the current segment's " +
+        "text becomes available (replace the currently-displayed in-progress line), and " +
+        "`{\"type\":\"segment\",\"text\":\"...\"}` once a segment is committed (append it to permanent " +
+        "history and start a new in-progress line). Nemotron uses true cache-aware incremental decoding; " +
+        "Whisper has no incremental API and instead periodically re-transcribes its current segment's " +
+        "buffered audio, which is trimmed down at each commit. Send a text frame `{\"type\":\"end\"}` (or " +
+        "close the socket) to finish - the server replies once more with " +
+        "`{\"type\":\"final\",\"text\":\"...\"}` (the trailing, not-yet-committed segment's text) before " +
+        "closing. Works in both in-process and worker mode. Swagger UI cannot exercise WebSocket endpoints " +
+        "via \"Try it out\"; this description documents the protocol only.");
 }
 
 app.MapFallbackToFile("/index.html");
@@ -585,10 +607,10 @@ static async Task RunStreamingTranscriptionAsync(WebSocket webSocket, IStreaming
             continue;
         }
 
-        var updatedText = await session.ProcessChunkAsync(messageStream.ToArray(), cancellationToken);
-        if (updatedText is not null)
+        var updates = await session.ProcessChunkAsync(messageStream.ToArray(), cancellationToken);
+        foreach (var update in updates)
         {
-            await SendJsonAsync(webSocket, new { type = "partial", text = updatedText }, cancellationToken);
+            await SendJsonAsync(webSocket, new { type = update.IsSegmentFinal ? "segment" : "partial", text = update.Text }, cancellationToken);
         }
     }
 

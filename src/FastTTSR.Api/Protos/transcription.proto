@@ -54,12 +54,15 @@ message StreamConfig {
   string model_path = 3;
   string language = 4;
   bool use_vad = 5;
+  double segment_seconds = 6;
 }
 
-// One incremental transcription update - carries the full transcript-so-far, not a delta.
+// One incremental transcription update - text is scoped to the CURRENT segment only (never the
+// whole conversation), keeping every message bounded in size regardless of utterance length.
 message TranscribeStreamUpdate {
   string text = 1;
   bool is_final = 2;
+  bool is_segment_final = 3;
 }
 
 // Health check request

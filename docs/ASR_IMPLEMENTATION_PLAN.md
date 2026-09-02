@@ -176,7 +176,7 @@ phase's remaining action items:
 1. **Mic/tab capture both broken on non-secure origins.** `LiveTranscription.vue`'s
    `startMicrophone()` calls `navigator.mediaDevices.getUserMedia(...)` with **no guard** —
    browsers make `navigator.mediaDevices` itself `undefined` on any non-secure context (plain HTTP
-   on a non-`localhost` host, e.g. `http://lab02.nelson-lab.com:5768`), producing exactly the
+   on a non-`localhost` host, e.g. `http://my.homelab.com:5768`), producing exactly the
    reported `Cannot read properties of undefined (reading 'getUserMedia')`. Not fixable in JS
    alone (browser platform security restriction) — needs a guard + actionable error message
    directing the user to serve over HTTPS or `localhost`.

@@ -148,18 +148,21 @@ Frontend: `AsrModel.supportsVad` gates a `.vad-toggle` checkbox in the ASR panel
   `WorkerTranscription` service with `Transcribe`/`HealthCheck` unary RPCs, plus `TranscribeStream`
   - a bidirectional streaming RPC (`stream TranscribeStreamChunk` in, `stream TranscribeStreamUpdate`
   out) used for live transcription in worker mode. The first request message must set `config`
-  (`StreamConfig`: model_name/engine/model_path/language/use_vad); every subsequent message sets
-  `audio_chunk` (raw PCM16 mono bytes). `WorkerTranscriptionService.TranscribeStream` creates the
-  right engine's `IStreamingTranscriptionSession` (same routing as the unary RPC) and streams back
-  `{ text, is_final }` updates.
+  (`StreamConfig`: model_name/engine/model_path/language/use_vad/segment_seconds); every subsequent
+  message sets `audio_chunk` (raw PCM16 mono bytes). `WorkerTranscriptionService.TranscribeStream`
+  creates the right engine's `IStreamingTranscriptionSession` (same routing as the unary RPC) and
+  streams back `{ text, is_final, is_segment_final }` updates - `text` is always scoped to the
+  CURRENT segment only (never the whole conversation), `is_segment_final` marks a mid-stream
+  segment commit, `is_final` marks the true end of the call.
 - **`Services/AsrWorkerProxyTranscriber.cs`** (mirrors `WorkerProxySynthesizer`): implements
   `IAsrTranscriber`, resolves its `WorkerProcessManager` via `[FromKeyedServices("asr")]`.
   `CreateStreamingSessionAsync` opens a duplex `TranscribeStream` call on the pooled worker channel
   and wraps it in a private `WorkerStreamingSession` adapter implementing
-  `IStreamingTranscriptionSession` (`ProcessChunkAsync` writes a chunk then drains the latest
-  buffered update from a background read-loop task; `FinishAsync` completes the request stream and
-  awaits the final update) - a drop-in for the same interface the in-process engines implement, so
-  the WS handler in `Program.cs` doesn't need to know which mode is active.
+  `IStreamingTranscriptionSession` (`ProcessChunkAsync` writes a chunk then drains buffered updates
+  from a background read-loop task, collapsing consecutive in-progress updates to the latest one
+  but forwarding every segment-commit exactly once; `FinishAsync` completes the request stream and
+  returns the final `is_final` update's text) - a drop-in for the same interface the in-process
+  engines implement, so the WS handler in `Program.cs` doesn't need to know which mode is active.
 - **`Services/AsrTranscriberRouter.cs`** (in-process mode, mirrors `TtsSynthesizerRouter`): routes
   by `model.Engine == "nemotron-3.5"` else defaults to Whisper.
 - **`Services/AsrModelWarmupService.cs`** / **`Services/AsrModelIdleMonitorService.cs`** mirror the
@@ -175,11 +178,20 @@ Frontend: `AsrModel.supportsVad` gates a `.vad-toggle` checkbox in the ASR panel
   when `response_format=verbose_json` (see "VAD/timestamp segments" below), with metrics in
   response headers (`X-Processing-Time`, `X-Audio-Duration`, `X-RTF`, `X-Character-Count`).
 - `GET /v1/audio/transcriptions/stream` (only if `asrEnabled`, WebSocket upgrade): works in both
-  in-process and worker mode - query params `model` (required)/`language`/`use_vad`; binary PCM16
-  16kHz mono frames in, JSON `{"type":"partial"|"final","text":...}` frames out; a `{"type":"end"}`
-  text frame (or socket close) finishes the session. Resolved via `IAsrTranscriber
-  .CreateStreamingSessionAsync(...)`, which hides the in-process-vs-worker-mode distinction behind
-  a duplex gRPC call in worker mode (see `AsrWorkerProxyTranscriber` below).
+  in-process and worker mode - query params `model` (required)/`language`/`use_vad`/
+  `segment_seconds` (optional, default 10, clamped to `[AsrStreamingOptions.MinSegmentSeconds,
+  MaxSegmentSeconds]` = `[5,30]`); binary PCM16 16kHz mono frames in, JSON frames out. Every
+  outbound message is scoped to the CURRENT segment only, never the whole conversation, so message
+  size stays bounded regardless of utterance length: `{"type":"partial","text":...}` as the
+  in-progress segment's text updates, `{"type":"segment","text":...}` once a segment is committed
+  (time limit or sentence-ending punctuation - see `SegmentBoundaryPolicy`), and
+  `{"type":"final","text":...}` (the trailing, not-yet-committed segment) once the session ends. A
+  `{"type":"end"}` text frame (or socket close) triggers the final message. Resolved via
+  `IAsrTranscriber.CreateStreamingSessionAsync(...)`, which hides the in-process-vs-worker-mode
+  distinction behind a duplex gRPC call in worker mode (see `AsrWorkerProxyTranscriber` below).
+  Nemotron's cache-aware encoder/decoder state is never reset at a segment boundary (only the
+  emitted/decoded text window is bounded); Whisper's retained PCM buffer IS trimmed down to a
+  ~0.5s overlap at each commit, since its per-pass cost is a real function of buffer size.
 - `GET /v1/models` merges `IModelCatalog`/`IAsrModelCatalog` results.
 - `/api/models` and `/v1/audio/speech` are wrapped in `if (ttsEnabled)` with zero internal changes.
 
@@ -187,7 +199,13 @@ Frontend: `AsrModel.supportsVad` gates a `.vad-toggle` checkbox in the ASR panel
 `frontend/src/components/LiveTranscription.vue`: mic capture via `getUserMedia`, tab/system audio
 via `getDisplayMedia`, resampled to 16kHz PCM16 in an `AudioWorkletNode`
 (`frontend/src/audio-worklets/pcm-capture-processor.js`), streamed over the WebSocket endpoint
-above. Wired into `App.vue`'s ASR panel behind `v-if="selectedAsrModel?.supportsStreaming"`.
+above (including a `segment_seconds` query param sourced from a numeric input next to the VAD
+toggle in `App.vue`, default 10). Maintains two pieces of state: `committedLines` (one entry per
+`segment`/`final` message, each timestamped client-side at receipt time and rendered on its own
+line, high-contrast/`#e5e5e5`) and `liveText` (the in-progress `partial` segment, rendered in gray/
+`#888888` right after the committed lines) - gives a visual distinction between already-committed
+and still-being-transcribed text, with no backend timestamp support needed. Wired into `App.vue`'s
+ASR panel behind `v-if="selectedAsrModel?.supportsStreaming"`.
 
 ## VAD/timestamp segments (offline endpoint only)
 `Models/TranscriptionSegment.cs` (`Id`, `Start`, `End`, `Text`) + `TranscriptionResult.Segments`.

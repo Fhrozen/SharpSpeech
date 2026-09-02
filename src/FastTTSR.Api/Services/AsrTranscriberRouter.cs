@@ -42,14 +42,15 @@ public sealed class AsrTranscriberRouter : IAsrTranscriber, IIdleTrackingTranscr
         string modelDirectory,
         string? language,
         bool enableVad,
+        double segmentSeconds,
         CancellationToken cancellationToken)
     {
         if (string.Equals(model.Engine, NemotronEngine, StringComparison.OrdinalIgnoreCase))
         {
-            return _nemotron.CreateStreamingSessionAsync(model, modelDirectory, language, enableVad, cancellationToken);
+            return _nemotron.CreateStreamingSessionAsync(model, modelDirectory, language, enableVad, segmentSeconds, cancellationToken);
         }
 
-        return _whisper.CreateStreamingSessionAsync(model, modelDirectory, language, enableVad, cancellationToken);
+        return _whisper.CreateStreamingSessionAsync(model, modelDirectory, language, enableVad, segmentSeconds, cancellationToken);
     }
 
     public IReadOnlyDictionary<string, DateTime> GetLoadedEngines()

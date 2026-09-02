@@ -1,16 +1,20 @@
 namespace FastTTSR.Api.Services;
 
 /// <summary>
-/// Naive streaming session for Whisper, which has no true incremental decode API: buffers all raw
-/// PCM16 mono 16kHz audio received so far and periodically re-transcribes the whole buffer from
-/// scratch via the existing batch <see cref="WhisperAsrEngine.TranscribeAsync"/>, replacing the
-/// previous partial result rather than emitting a delta.
+/// Naive streaming session for Whisper, which has no true incremental decode API: buffers raw
+/// PCM16 mono 16kHz audio and periodically re-transcribes the whole buffer from scratch via the
+/// existing batch <see cref="WhisperAsrEngine.TranscribeAsync"/>. To keep each pass's cost (and
+/// each outbound message) bounded regardless of total utterance length, the buffer is trimmed
+/// down to a small trailing overlap every time a segment is committed (time limit or
+/// sentence-ending punctuation - see <see cref="SegmentBoundaryPolicy"/>).
 /// </summary>
-public sealed class WhisperStreamingSession(WhisperAsrEngine engine, string? language) : IStreamingTranscriptionSession
+public sealed class WhisperStreamingSession(WhisperAsrEngine engine, string? language, double segmentSeconds) : IStreamingTranscriptionSession
 {
     private const int SampleRateValue = 16000;
     private const double MinNewAudioSecondsBetweenPasses = 2.0;
     private const int MinNewSamplesBetweenPasses = (int)(MinNewAudioSecondsBetweenPasses * SampleRateValue);
+    private const double OverlapSeconds = 0.5;
+    private const int OverlapSamples = (int)(OverlapSeconds * SampleRateValue);
 
     private readonly List<byte> _pcm = [];
     private int _samplesAtLastPass;
@@ -19,11 +23,11 @@ public sealed class WhisperStreamingSession(WhisperAsrEngine engine, string? lan
 
     public int SampleRate => SampleRateValue;
 
-    public async Task<string?> ProcessChunkAsync(byte[] pcm16Chunk, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<StreamingUpdate>> ProcessChunkAsync(byte[] pcm16Chunk, CancellationToken cancellationToken)
     {
         if (_finished)
         {
-            return null;
+            return [];
         }
 
         _pcm.AddRange(pcm16Chunk);
@@ -31,7 +35,7 @@ public sealed class WhisperStreamingSession(WhisperAsrEngine engine, string? lan
 
         if (totalSamples - _samplesAtLastPass < MinNewSamplesBetweenPasses)
         {
-            return null;
+            return [];
         }
 
         _samplesAtLastPass = totalSamples;
@@ -39,11 +43,26 @@ public sealed class WhisperStreamingSession(WhisperAsrEngine engine, string? lan
 
         if (text == _lastText)
         {
-            return null;
+            return [];
         }
 
         _lastText = text;
-        return text;
+
+        if (!SegmentBoundaryPolicy.ShouldCommit(totalSamples / (double)SampleRateValue, segmentSeconds, text))
+        {
+            return [new StreamingUpdate(text, IsSegmentFinal: false)];
+        }
+
+        // Commit: trim the buffer down to a small trailing overlap so the NEXT pass re-transcribes
+        // only the new segment, not the whole growing conversation.
+        var overlapStart = Math.Max(0, _pcm.Count - OverlapSamples * 2);
+        var overlap = _pcm.GetRange(overlapStart, _pcm.Count - overlapStart);
+        _pcm.Clear();
+        _pcm.AddRange(overlap);
+        _samplesAtLastPass = 0;
+        _lastText = string.Empty;
+
+        return [new StreamingUpdate(text, IsSegmentFinal: true)];
     }
 
     public async Task<string> FinishAsync(CancellationToken cancellationToken)
@@ -69,3 +88,4 @@ public sealed class WhisperStreamingSession(WhisperAsrEngine engine, string? lan
     {
     }
 }
+

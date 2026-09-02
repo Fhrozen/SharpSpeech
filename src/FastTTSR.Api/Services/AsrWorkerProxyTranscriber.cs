@@ -125,7 +125,7 @@ public sealed class AsrWorkerProxyTranscriber : IAsrTranscriber, IDisposable
     }
 
     public async Task<IStreamingTranscriptionSession> CreateStreamingSessionAsync(
-        AsrModelDefinition model, string modelDirectory, string? language, bool enableVad, CancellationToken cancellationToken)
+        AsrModelDefinition model, string modelDirectory, string? language, bool enableVad, double segmentSeconds, CancellationToken cancellationToken)
     {
         var modelKey = $"{model.Engine}:{model.Name}";
 
@@ -142,7 +142,8 @@ public sealed class AsrWorkerProxyTranscriber : IAsrTranscriber, IDisposable
                 Engine = model.Engine,
                 ModelPath = Path.Combine(modelDirectory, model.ModelPath),
                 Language = language ?? string.Empty,
-                UseVad = enableVad
+                UseVad = enableVad,
+                SegmentSeconds = segmentSeconds
             }
         }, cancellationToken);
 
@@ -155,7 +156,7 @@ public sealed class AsrWorkerProxyTranscriber : IAsrTranscriber, IDisposable
     private sealed class WorkerStreamingSession : IStreamingTranscriptionSession
     {
         private readonly AsyncDuplexStreamingCall<TranscribeStreamChunk, TranscribeStreamUpdate> _call;
-        private readonly Channel<string> _updates = Channel.CreateUnbounded<string>();
+        private readonly Channel<StreamingUpdate> _updates = Channel.CreateUnbounded<StreamingUpdate>();
         private readonly Task _readLoopTask;
         private string _lastFinalText = string.Empty;
 
@@ -177,9 +178,10 @@ public sealed class AsrWorkerProxyTranscriber : IAsrTranscriber, IDisposable
                     if (update.IsFinal)
                     {
                         _lastFinalText = update.Text;
+                        continue; // the true end-of-stream update is consumed by FinishAsync, not queued as a segment update
                     }
 
-                    await _updates.Writer.WriteAsync(update.Text);
+                    await _updates.Writer.WriteAsync(new StreamingUpdate(update.Text, update.IsSegmentFinal));
                 }
             }
             catch (Exception)
@@ -192,28 +194,37 @@ public sealed class AsrWorkerProxyTranscriber : IAsrTranscriber, IDisposable
             }
         }
 
-        public async Task<string?> ProcessChunkAsync(byte[] pcm16Chunk, CancellationToken cancellationToken)
+        public async Task<IReadOnlyList<StreamingUpdate>> ProcessChunkAsync(byte[] pcm16Chunk, CancellationToken cancellationToken)
         {
             await _call.RequestStream.WriteAsync(new TranscribeStreamChunk { AudioChunk = ByteString.CopyFrom(pcm16Chunk) }, cancellationToken);
-            return DrainLatestUpdate();
+            return DrainUpdates();
         }
 
         public async Task<string> FinishAsync(CancellationToken cancellationToken)
         {
             await _call.RequestStream.CompleteAsync();
             await _readLoopTask;
-            return DrainLatestUpdate() ?? _lastFinalText;
+            return _lastFinalText;
         }
 
-        private string? DrainLatestUpdate()
+        /// <summary>Collapses consecutive in-progress (partial) updates down to the latest one, but
+        /// never drops a segment-final commit - each must reach the client exactly once, in order.</summary>
+        private List<StreamingUpdate> DrainUpdates()
         {
-            string? latest = null;
+            var result = new List<StreamingUpdate>();
             while (_updates.Reader.TryRead(out var next))
             {
-                latest = next;
+                if (!next.IsSegmentFinal && result.Count > 0 && !result[^1].IsSegmentFinal)
+                {
+                    result[^1] = next;
+                }
+                else
+                {
+                    result.Add(next);
+                }
             }
 
-            return latest;
+            return result;
         }
 
         public void Dispose() => _call.Dispose();

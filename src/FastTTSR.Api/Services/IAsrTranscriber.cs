@@ -14,11 +14,13 @@ public interface IAsrTranscriber
 
     /// <summary>Creates a stateful streaming session for live transcription over WebSocket - works
     /// identically whether ASR runs in-process or in worker mode (the worker-mode implementation
-    /// opens a duplex gRPC call under the hood).</summary>
+    /// opens a duplex gRPC call under the hood). <paramref name="segmentSeconds"/> is the max
+    /// segment duration before a forced commit (see <see cref="SegmentBoundaryPolicy"/>).</summary>
     Task<IStreamingTranscriptionSession> CreateStreamingSessionAsync(
         AsrModelDefinition model,
         string modelDirectory,
         string? language,
         bool enableVad,
+        double segmentSeconds,
         CancellationToken cancellationToken);
 }

@@ -212,6 +212,7 @@ const asrForm = reactive({
   model: '',
   language: '',
   enableVad: false,
+  segmentSeconds: 10,
   file: null as File | null
 })
 const transcriptionText = ref<string | null>(null)
@@ -482,6 +483,11 @@ onMounted(async () => {
                 <input type="checkbox" v-model="asrForm.enableVad" />
                 Voice-activity detection (skip silent audio)
               </label>
+
+              <label v-if="selectedAsrModel?.supportsStreaming" class="min-duration-field">
+                Segment length (s)
+                <input type="number" step="1" min="5" max="30" v-model.number="asrForm.segmentSeconds" />
+              </label>
             </div>
 
             <div v-if="selectedAsrModel?.supportsStreaming" class="sub-tab-switcher">
@@ -554,6 +560,7 @@ onMounted(async () => {
                   :model="asrForm.model"
                   :language="asrForm.language"
                   :enable-vad="asrForm.enableVad"
+                  :segment-seconds="asrForm.segmentSeconds"
                 />
               </div>
             </template>

@@ -37,20 +37,20 @@ public sealed class WhisperAsrTranscriber : IAsrTranscriber, IIdleTrackingTransc
         return new TranscriptionResult(text, detectedLanguage, processingTime, audioDuration, text.Length, segments);
     }
 
-    public IStreamingTranscriptionSession CreateStreamingSession(AsrModelDefinition model, string modelDirectory, string? language)
+    public IStreamingTranscriptionSession CreateStreamingSession(AsrModelDefinition model, string modelDirectory, string? language, double segmentSeconds)
     {
         if (!string.Equals(model.Engine, WhisperEngine, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException($"WhisperAsrTranscriber cannot handle engine '{model.Engine}'.");
         }
 
-        return new WhisperStreamingSession(GetOrCreateEngine(model, modelDirectory), language);
+        return new WhisperStreamingSession(GetOrCreateEngine(model, modelDirectory), language, segmentSeconds);
     }
 
     // Whisper has no VAD support - enableVad is accepted only to satisfy IAsrTranscriber's uniform signature.
     public Task<IStreamingTranscriptionSession> CreateStreamingSessionAsync(
-        AsrModelDefinition model, string modelDirectory, string? language, bool enableVad, CancellationToken cancellationToken) =>
-        Task.FromResult(CreateStreamingSession(model, modelDirectory, language));
+        AsrModelDefinition model, string modelDirectory, string? language, bool enableVad, double segmentSeconds, CancellationToken cancellationToken) =>
+        Task.FromResult(CreateStreamingSession(model, modelDirectory, language, segmentSeconds));
 
     private WhisperAsrEngine GetOrCreateEngine(AsrModelDefinition model, string modelDirectory)
     {

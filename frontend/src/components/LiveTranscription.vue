@@ -6,10 +6,12 @@ const props = defineProps<{
   model: string
   language: string
   enableVad: boolean
+  segmentSeconds: number
 }>()
 
 const isRecording = ref(false)
 const liveText = ref('')
+const committedLines = ref<{ text: string; timestamp: string }[]>([])
 const statusMessage = ref('')
 const errorMessage = ref('')
 
@@ -66,9 +68,14 @@ async function startTabAudio() {
   }
 }
 
+function formatClock(date: Date): string {
+  return date.toTimeString().slice(0, 8)
+}
+
 async function startStreaming(stream: MediaStream) {
   mediaStream = stream
   liveText.value = ''
+  committedLines.value = []
   statusMessage.value = 'Connecting...'
 
   audioContext = new AudioContext({ sampleRate: 16000 })
@@ -84,6 +91,9 @@ async function startStreaming(stream: MediaStream) {
   }
   if (props.enableVad) {
     params.set('use_vad', 'true')
+  }
+  if (props.segmentSeconds) {
+    params.set('segment_seconds', String(props.segmentSeconds))
   }
 
   const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
@@ -105,7 +115,16 @@ async function startStreaming(stream: MediaStream) {
   socket.onmessage = (event) => {
     try {
       const message = JSON.parse(event.data) as StreamMessage
-      liveText.value = message.text
+      if (message.type === 'partial') {
+        liveText.value = message.text
+        return
+      }
+
+      // 'segment' (mid-stream commit) or 'final' (end of stream) - both append to history the same way.
+      if (message.text) {
+        committedLines.value.push({ text: message.text, timestamp: formatClock(new Date()) })
+      }
+      liveText.value = ''
       if (message.type === 'final') {
         statusMessage.value = 'Finished'
       }
@@ -165,8 +184,12 @@ onBeforeUnmount(() => {
     <div v-if="statusMessage" class="live-status">{{ statusMessage }}</div>
     <div v-if="errorMessage" class="live-error">{{ errorMessage }}</div>
 
-    <div v-if="liveText || isRecording" class="live-text-box">
-      {{ liveText || 'Listening for speech...' }}
+    <div v-if="committedLines.length || liveText || isRecording" class="live-text-box">
+      <div v-for="(line, idx) in committedLines" :key="idx" class="segment-line">
+        <span class="segment-timestamp">[{{ line.timestamp }}]</span> {{ line.text }}
+      </div>
+      <div v-if="liveText" class="partial-line">{{ liveText }}</div>
+      <div v-else-if="!committedLines.length" class="partial-line">Listening for speech...</div>
     </div>
   </div>
 </template>
@@ -222,5 +245,20 @@ onBeforeUnmount(() => {
   min-height: 3rem;
   color: #ffffff;
   white-space: pre-wrap;
+}
+
+.segment-line {
+  color: #e5e5e5;
+  margin-bottom: 0.35rem;
+}
+
+.segment-timestamp {
+  color: #666666;
+  font-size: 0.8em;
+  margin-right: 0.4em;
+}
+
+.partial-line {
+  color: #888888;
 }
 </style>

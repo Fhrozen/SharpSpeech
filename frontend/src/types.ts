@@ -70,6 +70,6 @@ export interface ServerInfo {
 }
 
 export interface StreamMessage {
-  type: 'partial' | 'final'
+  type: 'partial' | 'segment' | 'final'
   text: string
 }

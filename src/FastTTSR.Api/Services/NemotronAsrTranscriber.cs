@@ -37,19 +37,19 @@ public sealed class NemotronAsrTranscriber : IAsrTranscriber, IIdleTrackingTrans
         return Task.FromResult(new TranscriptionResult(text, detectedLanguage, processingTime, audioDuration, text.Length, segments));
     }
 
-    public IStreamingTranscriptionSession CreateStreamingSession(AsrModelDefinition model, string modelDirectory, string? language, bool enableVad)
+    public IStreamingTranscriptionSession CreateStreamingSession(AsrModelDefinition model, string modelDirectory, string? language, bool enableVad, double segmentSeconds)
     {
         if (!string.Equals(model.Engine, NemotronEngine, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException($"NemotronAsrTranscriber cannot handle engine '{model.Engine}'.");
         }
 
-        return GetOrCreateEngine(model, modelDirectory).CreateStreamingSession(language, enableVad);
+        return GetOrCreateEngine(model, modelDirectory).CreateStreamingSession(language, enableVad, segmentSeconds);
     }
 
     public Task<IStreamingTranscriptionSession> CreateStreamingSessionAsync(
-        AsrModelDefinition model, string modelDirectory, string? language, bool enableVad, CancellationToken cancellationToken) =>
-        Task.FromResult(CreateStreamingSession(model, modelDirectory, language, enableVad));
+        AsrModelDefinition model, string modelDirectory, string? language, bool enableVad, double segmentSeconds, CancellationToken cancellationToken) =>
+        Task.FromResult(CreateStreamingSession(model, modelDirectory, language, enableVad, segmentSeconds));
 
     private NemotronAsrEngine GetOrCreateEngine(AsrModelDefinition model, string modelDirectory)
     {

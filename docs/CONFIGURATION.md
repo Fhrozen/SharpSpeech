@@ -9,9 +9,10 @@ FastTTSR can be configured through environment variables, configuration files, a
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `HTTP_PORT` | `5768` | HTTP port to listen on |
-| `HTTPS_PORT` | - | HTTPS port (optional, requires certificate) |
+| `HTTPS_PORT` | - | HTTPS port (optional, requires a certificate - see [HTTPS / TLS](#https--tls) below) |
 | `ASPNETCORE_URLS` | `http://+:8080` | ASP.NET Core listening URLs |
 | `HOST_PORT` | `5768` | Docker host port mapping (docker-compose only) |
+| `HOST_HTTPS_PORT` | `5769` | Docker host port mapping for HTTPS (docker-compose only) |
 | `SERVER_MODE` | `tts` | Which task types to serve: `tts`, `asr`, or `both`. Gates TTS/ASR service registration and endpoint mapping - see [Architecture](ARCHITECTURE.md#asr-architecture) |
 
 **Example:**
@@ -21,6 +22,27 @@ HTTP_PORT=8080 dotnet run
 # Serve both TTS and ASR from one instance
 SERVER_MODE=both dotnet run
 ```
+
+### HTTPS / TLS
+
+Browsers only expose `navigator.mediaDevices` (mic/tab capture, used by the ASR live-transcription
+panel) on a secure context - HTTPS, or exactly `http://localhost`. To serve HTTPS on a LAN
+hostname/IP, FastTTSR relies on Kestrel's built-in certificate config - no application code is
+involved in loading the certificate:
+
+1. Generate a self-signed certificate: `./generate-cert.sh <your-lan-hostname-or-ip>` (prints a
+   generated password and writes `./certs/fastttsr.pfx`).
+2. Set in `.env`: `HTTPS_PORT=5769`, `HOST_HTTPS_PORT=5769`, `CERT_PASSWORD=<printed password>`.
+3. `docker compose up` - the compose file already maps the HTTPS port, mounts `./certs:/certs:ro`,
+   and sets `Kestrel__Certificates__Default__Path`/`Password` from `CERT_PASSWORD`.
+4. Browse to `https://<hostname>:5769` and accept the one-time self-signed-certificate warning.
+
+Once `HTTPS_PORT` is set, plain HTTP requests are automatically redirected to HTTPS
+(`UseHttpsRedirection`). Leaving `HTTPS_PORT` unset preserves today's HTTP-only behavior.
+
+This is scoped to LAN/internal self-signed use. For a publicly reachable domain with a real
+certificate (Let's Encrypt/ACME), prefer a reverse proxy in front of FastTTSR - see
+[Reverse Proxy Configuration](#reverse-proxy-configuration) below.
 
 ### Model Configuration
 
@@ -416,6 +438,7 @@ services:
     image: fhrozen/fast-ttsr:latest
     ports:
       - "${HOST_PORT:-5768}:${HTTP_PORT:-5768}"
+      - "${HOST_HTTPS_PORT:-5769}:${HTTPS_PORT:-5769}"
     environment:
       HTTP_PORT: ${HTTP_PORT:-5768}
       HTTPS_PORT: ${HTTPS_PORT:-}
@@ -426,9 +449,13 @@ services:
       AsrWorkerOptions__Enabled: ${AsrWorkerOptions__Enabled:-true}
       AsrWorkerOptions__PortRangeStart: ${AsrWorkerOptions__PortRangeStart:-50151}
       AsrWorkerOptions__IdleTimeoutSeconds: ${AsrWorkerOptions__IdleTimeoutSeconds:-60}
+      # Only used once HTTPS_PORT is set - see "HTTPS / TLS" above.
+      Kestrel__Certificates__Default__Path: /certs/fastttsr.pfx
+      Kestrel__Certificates__Default__Password: ${CERT_PASSWORD:-}
     volumes:
       - ./model-cache:/cache
       - ./assets:/app/assets:ro
+      - ./certs:/certs:ro
 ```
 
 Use `docker build --target runtime-tts`/`runtime-asr`/`runtime-all` (see [Dockerfile](../Dockerfile))
@@ -444,6 +471,8 @@ Create a `.env` file in the project root:
 HOST_PORT=5768
 HTTP_PORT=5768
 HTTPS_PORT=
+HOST_HTTPS_PORT=5769
+CERT_PASSWORD=
 SERVER_MODE=both
 
 # Model Configuration
@@ -607,6 +636,11 @@ services:
 ---
 
 ## Reverse Proxy Configuration
+
+For LAN/internal use, prefer the Kestrel-native HTTPS flow described in [HTTPS / TLS](#https--tls)
+above - it needs no extra container. The nginx/Caddy examples below are an alternative for a
+publicly reachable deployment (real Let's Encrypt/ACME certs, rate limiting, or terminating TLS
+for multiple services at once); they are illustrative snippets, not files shipped in this repo.
 
 ### nginx
 

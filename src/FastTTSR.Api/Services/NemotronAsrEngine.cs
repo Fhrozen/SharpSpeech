@@ -410,8 +410,8 @@ public sealed class NemotronAsrEngine : IDisposable
     /// <summary>Creates a stateful streaming session - a fresh feature extractor and cache/decoder
     /// state, plus a dedicated VAD engine if requested (never the shared <see cref="_vadEngine"/>,
     /// since its internal LSTM state can't safely be shared across concurrent sessions).</summary>
-    public StreamingSession CreateStreamingSession(string? language, bool enableVad) =>
-        new(this, NemotronLanguages.Resolve(language), enableVad);
+    public StreamingSession CreateStreamingSession(string? language, bool enableVad, double segmentSeconds) =>
+        new(this, NemotronLanguages.Resolve(language), enableVad, segmentSeconds);
 
     /// <summary>
     /// Incremental cache-aware streaming session - mirrors the Python reference's
@@ -429,6 +429,7 @@ public sealed class NemotronAsrEngine : IDisposable
         private readonly SileroVadGate? _vadGate;
         private readonly List<byte> _pending = [];
         private readonly List<int> _tokenIds = [];
+        private readonly double _segmentSeconds;
 
         private float[] _cacheLastChannel;
         private float[] _cacheLastTime;
@@ -437,11 +438,14 @@ public sealed class NemotronAsrEngine : IDisposable
         private float[] _hState;
         private float[] _cState;
         private bool _finished;
+        private int _committedTokenCount;
+        private double _segmentElapsedSeconds;
 
-        internal StreamingSession(NemotronAsrEngine engine, long languageId, bool enableVad)
+        internal StreamingSession(NemotronAsrEngine engine, long languageId, bool enableVad, double segmentSeconds)
         {
             _engine = engine;
             _languageId = languageId;
+            _segmentSeconds = segmentSeconds;
             _featureExtractor = engine.CreateFeatureExtractor();
 
             _cacheLastChannel = new float[engine._encoderLayers * engine._cacheChannelFrames * engine._encoderHidden];
@@ -461,29 +465,50 @@ public sealed class NemotronAsrEngine : IDisposable
 
         public int SampleRate => _engine._sampleRate;
 
-        public Task<string?> ProcessChunkAsync(byte[] pcm16Chunk, CancellationToken cancellationToken)
+        public Task<IReadOnlyList<StreamingUpdate>> ProcessChunkAsync(byte[] pcm16Chunk, CancellationToken cancellationToken)
         {
             if (_finished)
             {
-                return Task.FromResult<string?>(null);
+                return Task.FromResult<IReadOnlyList<StreamingUpdate>>([]);
             }
 
             _pending.AddRange(pcm16Chunk);
             var chunkByteSize = _engine._chunkSamples * 2;
-            var producedNewTokens = false;
+            var updates = new List<StreamingUpdate>();
 
             while (_pending.Count >= chunkByteSize)
             {
                 var chunkBytes = _pending.GetRange(0, chunkByteSize).ToArray();
                 _pending.RemoveRange(0, chunkByteSize);
 
-                if (DecodeOneChunk(BytesToFloatSamples(chunkBytes, _engine._chunkSamples)))
+                var producedNewTokens = DecodeOneChunk(BytesToFloatSamples(chunkBytes, _engine._chunkSamples));
+                _segmentElapsedSeconds += _engine._chunkSamples / (double)_engine._sampleRate;
+
+                if (producedNewTokens)
                 {
-                    producedNewTokens = true;
+                    updates.Add(BuildUpdate());
                 }
             }
 
-            return Task.FromResult(producedNewTokens ? _engine._vocabulary.Decode(_tokenIds) : null);
+            return Task.FromResult<IReadOnlyList<StreamingUpdate>>(updates);
+        }
+
+        /// <summary>Decodes only the tokens since the last committed segment (small slice, not the
+        /// whole conversation) and, if the segment boundary policy says to commit, resets the
+        /// commit offset/timer - the underlying encoder/decoder cache state is left untouched.</summary>
+        private StreamingUpdate BuildUpdate()
+        {
+            var segmentTokens = _tokenIds.GetRange(_committedTokenCount, _tokenIds.Count - _committedTokenCount);
+            var segmentText = _engine._vocabulary.Decode(segmentTokens);
+
+            if (SegmentBoundaryPolicy.ShouldCommit(_segmentElapsedSeconds, _segmentSeconds, segmentText))
+            {
+                _committedTokenCount = _tokenIds.Count;
+                _segmentElapsedSeconds = 0;
+                return new StreamingUpdate(segmentText, IsSegmentFinal: true);
+            }
+
+            return new StreamingUpdate(segmentText, IsSegmentFinal: false);
         }
 
         public Task<string> FinishAsync(CancellationToken cancellationToken)
@@ -504,7 +529,8 @@ public sealed class NemotronAsrEngine : IDisposable
             }
 
             _finished = true;
-            return Task.FromResult(_engine._vocabulary.Decode(_tokenIds));
+            var trailingTokens = _tokenIds.GetRange(_committedTokenCount, _tokenIds.Count - _committedTokenCount);
+            return Task.FromResult(_engine._vocabulary.Decode(trailingTokens));
         }
 
         private bool DecodeOneChunk(float[] chunk)

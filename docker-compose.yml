@@ -7,6 +7,7 @@ services:
     image: fhrozen/fast-ttsr:audio
     ports:
       - "${HOST_PORT:-5768}:${HTTP_PORT:-5768}"
+      - "${HOST_HTTPS_PORT:-5769}:${HTTPS_PORT:-5769}"
     environment:
       HTTP_PORT: ${HTTP_PORT:-5768}
       HTTPS_PORT: ${HTTPS_PORT:-}
@@ -17,9 +18,14 @@ services:
       AsrWorkerOptions__Enabled: ${AsrWorkerOptions__Enabled:-true}
       AsrWorkerOptions__PortRangeStart: ${AsrWorkerOptions__PortRangeStart:-50151}
       AsrWorkerOptions__IdleTimeoutSeconds: ${AsrWorkerOptions__IdleTimeoutSeconds:-60}
+      # Kestrel's built-in default-certificate loader - only used when HTTPS_PORT is set. Generate
+      # a cert first with ./generate-cert.sh <your-lan-hostname-or-ip>.
+      Kestrel__Certificates__Default__Path: /certs/fastttsr.pfx
+      Kestrel__Certificates__Default__Password: ${CERT_PASSWORD:-}
     volumes:
       - ./model-cache:/cache
       - ./assets:/app/assets:ro
+      - ./certs:/certs:ro
 
   # Example: TTS-only deployment, built locally from a smaller image variant.
   # fastttsr-tts:

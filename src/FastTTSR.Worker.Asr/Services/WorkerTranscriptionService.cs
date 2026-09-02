@@ -76,10 +76,11 @@ public sealed class WorkerTranscriptionService : WorkerTranscription.WorkerTrans
         var config = requestStream.Current.Config;
         Console.WriteLine($"[Worker.Asr] TranscribeStream started: engine={config.Engine}, model={config.ModelName}");
         var language = string.IsNullOrEmpty(config.Language) ? null : config.Language;
+        var segmentSeconds = config.SegmentSeconds > 0 ? config.SegmentSeconds : new FastTTSR.Api.Options.AsrStreamingOptions().DefaultSegmentSeconds;
 
         using IStreamingTranscriptionSession session = string.Equals(config.Engine, "nemotron-3.5", StringComparison.OrdinalIgnoreCase)
-            ? GetOrCreateNemotronEngine(config.ModelName, config.ModelPath).CreateStreamingSession(language, config.UseVad)
-            : new WhisperStreamingSession(GetOrCreateWhisperEngine(config.ModelName, config.ModelPath), language);
+            ? GetOrCreateNemotronEngine(config.ModelName, config.ModelPath).CreateStreamingSession(language, config.UseVad, segmentSeconds)
+            : new WhisperStreamingSession(GetOrCreateWhisperEngine(config.ModelName, config.ModelPath), language, segmentSeconds);
 
         while (await requestStream.MoveNext(context.CancellationToken))
         {
@@ -90,10 +91,10 @@ public sealed class WorkerTranscriptionService : WorkerTranscription.WorkerTrans
                 continue;
             }
 
-            var updatedText = await session.ProcessChunkAsync(chunk.AudioChunk.ToByteArray(), context.CancellationToken);
-            if (updatedText is not null)
+            var updates = await session.ProcessChunkAsync(chunk.AudioChunk.ToByteArray(), context.CancellationToken);
+            foreach (var update in updates)
             {
-                await responseStream.WriteAsync(new TranscribeStreamUpdate { Text = updatedText, IsFinal = false });
+                await responseStream.WriteAsync(new TranscribeStreamUpdate { Text = update.Text, IsFinal = false, IsSegmentFinal = update.IsSegmentFinal });
             }
         }
 

@@ -12,7 +12,11 @@ native `ggml-cpu` library needs OpenMP). `runtime-asr`/`runtime-all` additionall
 Whisper.net's native libs to load at all (see "Known fixes" below), and install `ffmpeg` (universal
 audio input format support — see [docs/wiki/asr-engines.md](asr-engines.md)). `docker-compose.yml`
 passes through `SERVER_MODE` + `AsrWorkerOptions__*` env vars and has commented example services
-for TTS-only/ASR-only deployments using `target: runtime-tts`/`runtime-asr`.
+for TTS-only/ASR-only deployments using `target: runtime-tts`/`runtime-asr`. It also maps an
+optional HTTPS port (`HOST_HTTPS_PORT:HTTPS_PORT`, both default `5769`) and mounts `./certs:/certs:ro`
+plus `Kestrel__Certificates__Default__Path`/`Password` env vars (only meaningful once `HTTPS_PORT`
+is set) - see `./generate-cert.sh` and the "HTTPS / TLS" section of `docs/CONFIGURATION.md` for the
+self-signed LAN-hostname cert flow; `Program.cs` auto-redirects HTTP → HTTPS once `HTTPS_PORT` is set.
 
 Used Docker's native `--target <stage>` mechanism (not a build `ARG` + `FROM runtime-${ARG}`
 trick) — the standard, better-supported idiom for "one Dockerfile, multiple selectable final

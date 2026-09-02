@@ -30,12 +30,23 @@ panel) on a secure context - HTTPS, or exactly `http://localhost`. To serve HTTP
 hostname/IP, FastTTSR relies on Kestrel's built-in certificate config - no application code is
 involved in loading the certificate:
 
-1. Generate a self-signed certificate: `./generate-cert.sh <your-lan-hostname-or-ip>` (prints a
-   generated password and writes `./certs/fastttsr.pfx`).
+1. Generate a certificate: `./generate-cert.sh <your-lan-hostname-or-ip>` (prints a generated
+   password and writes `./certs/fastttsr.pfx`). It picks the best available method automatically:
+   - Locally-installed `mkcert`, if present - a locally-trusted CA, no browser warnings at all.
+   - Otherwise a dockerized `mkcert` (`./docker/mkcert`, no local install/sudo needed) - writes the
+     CA under `./certs/mkcert-ca/`. **Import `./certs/mkcert-ca/rootCA.pem` into the trust store of
+     the machine that will run the BROWSER** (mkcert can't reach a browser trust store from inside
+     a container) - Windows: double-click it → "Install Certificate" → Local Machine → "Trusted
+     Root Certification Authorities"; then fully restart the browser.
+   - Otherwise a plain openssl self-signed cert - browsers show a one-time warning for the page,
+     but may still silently reject the live-transcription WebSocket even after you accept it (a
+     known Chromium limitation: a manually-bypassed cert warning doesn't reliably extend to
+     `new WebSocket()`'s own TLS handshake) - prefer one of the mkcert paths above if streaming
+     ASR over HTTPS doesn't connect.
 2. Set in `.env`: `HTTPS_PORT=5769`, `HOST_HTTPS_PORT=5769`, `CERT_PASSWORD=<printed password>`.
 3. `docker compose up` - the compose file already maps the HTTPS port, mounts `./certs:/certs:ro`,
    and sets `Kestrel__Certificates__Default__Path`/`Password` from `CERT_PASSWORD`.
-4. Browse to `https://<hostname>:5769` and accept the one-time self-signed-certificate warning.
+4. Browse to `https://<hostname>:5769`.
 
 Once `HTTPS_PORT` is set, plain HTTP requests are automatically redirected to HTTPS
 (`UseHttpsRedirection`). Leaving `HTTPS_PORT` unset preserves today's HTTP-only behavior.

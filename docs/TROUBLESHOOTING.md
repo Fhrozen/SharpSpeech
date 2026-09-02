@@ -700,10 +700,12 @@ Restart the container with `SERVER_MODE=asr` or `SERVER_MODE=both`.
 `http://your-lan-host:5768`) makes `navigator.mediaDevices` itself `undefined`, not just its
 capture methods - this is a browser platform security restriction, not an app bug.
 
-**Solution:** Serve the frontend over HTTPS (e.g. via a reverse proxy with a TLS certificate - see
-the nginx example in [docs/CONFIGURATION.md](CONFIGURATION.md)), or access it via
-`http://localhost:5768` if the browser and server are on the same machine. `LiveTranscription.vue`
-now shows this exact explanation instead of a raw JS error when it detects the missing API.
+**Solution:** Serve the frontend over HTTPS - either the built-in Kestrel-native flow (run
+`./generate-cert.sh <your-lan-hostname-or-ip>`, set `HTTPS_PORT`/`HOST_HTTPS_PORT`/`CERT_PASSWORD`
+in `.env`, see "HTTPS / TLS" in [docs/CONFIGURATION.md](CONFIGURATION.md)) or a reverse proxy with
+a TLS certificate (nginx example also in that doc), or access it via `http://localhost:5768` if
+the browser and server are on the same machine. `LiveTranscription.vue` now shows this exact
+explanation instead of a raw JS error when it detects the missing API.
 
 ### `GET /v1/audio/transcriptions/stream` (live transcription) returns 404
 
@@ -717,6 +719,45 @@ client script's WebSocket URL includes it.
 `docker-compose.yml` default) - the ASR worker process implements a bidirectional streaming gRPC
 RPC (`TranscribeStream`) that the API transparently proxies. If you're on an older build that still
 returns `501`, update to a version that includes worker-mode streaming support.
+
+### Live Transcription WebSocket fails in every browser, but a raw script (curl/Python) against the same URL works fine
+
+**Cause:** an antivirus/security suite's "scan encrypted connections" (HTTPS-inspection/MITM)
+feature - Kaspersky is the most commonly reported one, but similar features exist in other
+suites - is intercepting the TLS connection and mishandling the WebSocket upgrade handshake.
+Symptoms that confirm this rather than a server bug:
+- The page itself (and its self-signed cert warning) loads fine over HTTPS, but
+  `new WebSocket('wss://...')` fails immediately with a generic, reason-less "failed" in every
+  browser (Chrome, Brave, etc.) on that machine.
+- The exact same URL works from a plain script (Python `websockets`, `curl`) on the same machine -
+  AV HTTPS-scanning is typically applied per-browser/OS-proxy, not to arbitrary script processes.
+- Server-side logs show zero activity for the failed attempt - the request never reaches the
+  container at all, because the AV's local proxy drops/mishandles it before forwarding.
+- After accepting any "untrusted site" interstitial from the AV, the browser's padlock shows the
+  connection as secure/"certificate is valid" - that's the AV's own re-issued certificate (signed
+  by its locally-installed root CA), not the original self-signed one from `generate-cert.sh`.
+
+**Solution:** add an exclusion for the FastTTSR hostname/port in the antivirus's HTTPS/encrypted-
+connections-scanning settings (e.g. in Kaspersky: Settings → Network Settings → Encrypted
+connections scanning → add the hostname to exclusions, or temporarily set it to "Do not scan"
+to confirm the diagnosis), then retry. This is a client-side network security product limitation,
+not a FastTTSR bug.
+
+### Live Transcription WebSocket still fails after fixing antivirus interception, and Chrome shows "Not secure"/"you disabled security warnings for this site"
+
+**Cause:** a plain `openssl`-generated self-signed certificate (`generate-cert.sh`'s fallback path)
+was manually "clicked through" in the browser rather than genuinely trusted. Chrome's bypass for
+an untrusted-cert warning applies to page navigation/subresource loads, but a `new WebSocket(...)`
+call opens its own independent TLS handshake and re-validates the certificate - the bypass doesn't
+reliably extend to it, so the WebSocket keeps failing even though the page itself loads.
+
+**Solution:** use a genuinely trusted certificate instead of a bypassed self-signed one - re-run
+`./generate-cert.sh <hostname>` with either `mkcert` installed locally, or with just `docker`
+available (it auto-detects and uses `./docker/mkcert` for you, no local `mkcert` install/`sudo`
+needed). Either way, **also import the resulting `./certs/mkcert-ca/rootCA.pem`** into the trust
+store of the machine that runs the browser (not just the machine running the Docker container, if
+they're different) - mkcert's local CA is only trusted on whichever machine actually installs it.
+See "HTTPS / TLS" in [docs/CONFIGURATION.md](CONFIGURATION.md) for the full flow.
 
 ---
 

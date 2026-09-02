@@ -22,6 +22,8 @@ services:
       # a cert first with ./generate-cert.sh <your-lan-hostname-or-ip>.
       Kestrel__Certificates__Default__Path: /certs/fastttsr.pfx
       Kestrel__Certificates__Default__Password: ${CERT_PASSWORD:-}
+    env_file:
+      - .env
     volumes:
       - ./model-cache:/cache
       - ./assets:/app/assets:ro

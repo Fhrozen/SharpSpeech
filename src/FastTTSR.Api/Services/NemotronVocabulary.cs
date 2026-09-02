@@ -23,6 +23,16 @@ public sealed class NemotronVocabulary
 
     private static readonly Regex LanguageTagPattern = new("^<[A-Za-z]{2}-[A-Za-z]{2}>$", RegexOptions.Compiled);
 
+    // SentencePiece's word-boundary marker (rendered as a space by Decode) - a piece starting with
+    // it begins a new word; one that doesn't is a continuation of the previous token's word.
+    private const char WordStartMarker = '\u2581';
+
+    /// <summary>True if decoding this token id alone would start a new word rather than continue
+    /// the previous token's word - used by streaming sessions to avoid committing a segment
+    /// mid-word (see <see cref="NemotronAsrEngine.StreamingSession"/>).</summary>
+    public bool IsWordStart(int tokenId) =>
+        tokenId >= 0 && tokenId < _pieces.Count && _pieces[tokenId].Length > 0 && _pieces[tokenId][0] == WordStartMarker;
+
     public string Decode(IReadOnlyList<int> tokenIds) => Decode(tokenIds, out _);
 
     /// <summary>Decodes token ids to text, also surfacing the leading `&lt;xx-XX&gt;` language tag
@@ -53,6 +63,6 @@ public sealed class NemotronVocabulary
             builder.Append(piece);
         }
 
-        return builder.ToString().Replace('\u2581', ' ').Trim();
+        return builder.ToString().Replace(WordStartMarker, ' ').Trim();
     }
 }

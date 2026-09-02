@@ -482,7 +482,15 @@ public sealed class NemotronAsrEngine : IDisposable
                 _pending.RemoveRange(0, chunkByteSize);
 
                 var producedNewTokens = DecodeOneChunk(BytesToFloatSamples(chunkBytes, _engine._chunkSamples));
-                _segmentElapsedSeconds += _engine._chunkSamples / (double)_engine._sampleRate;
+
+                // Only count this chunk against the segment's time budget once the segment has
+                // actually started producing text - leading silence before the user starts talking
+                // must not eat into the budget (was causing premature commits right after the
+                // first word or two).
+                if (_tokenIds.Count > _committedTokenCount)
+                {
+                    _segmentElapsedSeconds += _engine._chunkSamples / (double)_engine._sampleRate;
+                }
 
                 if (producedNewTokens)
                 {
@@ -503,12 +511,36 @@ public sealed class NemotronAsrEngine : IDisposable
 
             if (SegmentBoundaryPolicy.ShouldCommit(_segmentElapsedSeconds, _segmentSeconds, segmentText))
             {
-                _committedTokenCount = _tokenIds.Count;
+                // Hold back a possibly-still-continuing final word - a commit boundary chosen purely
+                // by time/punctuation can otherwise land between two subword tokens of the same
+                // word (e.g. "belie"/"ve"), splitting it across two segments.
+                var commitBoundary = FindSafeCommitBoundary();
+                var committedTokens = _tokenIds.GetRange(_committedTokenCount, commitBoundary - _committedTokenCount);
+                var committedText = _engine._vocabulary.Decode(committedTokens);
+
+                _committedTokenCount = commitBoundary;
                 _segmentElapsedSeconds = 0;
-                return new StreamingUpdate(segmentText, IsSegmentFinal: true);
+                return new StreamingUpdate(committedText, IsSegmentFinal: true);
             }
 
             return new StreamingUpdate(segmentText, IsSegmentFinal: false);
+        }
+
+        /// <summary>Finds the largest safe commit boundary in the pending token range that doesn't
+        /// split a word - the start of the last word is held back (it may still be continued by
+        /// the next chunk's tokens). Falls back to committing everything if the whole pending
+        /// range is a single word.</summary>
+        private int FindSafeCommitBoundary()
+        {
+            for (var i = _tokenIds.Count - 1; i > _committedTokenCount; i--)
+            {
+                if (_engine._vocabulary.IsWordStart(_tokenIds[i]))
+                {
+                    return i;
+                }
+            }
+
+            return _tokenIds.Count;
         }
 
         public Task<string> FinishAsync(CancellationToken cancellationToken)

@@ -192,6 +192,12 @@ Frontend: `AsrModel.supportsVad` gates a `.vad-toggle` checkbox in the ASR panel
   Nemotron's cache-aware encoder/decoder state is never reset at a segment boundary (only the
   emitted/decoded text window is bounded); Whisper's retained PCM buffer IS trimmed down to a
   ~0.5s overlap at each commit, since its per-pass cost is a real function of buffer size.
+  Two commit-quality safeguards in `NemotronAsrEngine.StreamingSession`: (1) the segment's time
+  budget only starts counting once real speech (the first decoded token) appears, so leading
+  silence before the user starts talking can't eat into it and force a premature commit right
+  after the first word or two; (2) a commit boundary is never allowed to land mid-word - a raw
+  SentencePiece continuation token (no leading `▁` marker; see `NemotronVocabulary.IsWordStart`)
+  at the end of the pending range is held back for the next segment instead of being split off.
 - `GET /v1/models` merges `IModelCatalog`/`IAsrModelCatalog` results.
 - `/api/models` and `/v1/audio/speech` are wrapped in `if (ttsEnabled)` with zero internal changes.
 

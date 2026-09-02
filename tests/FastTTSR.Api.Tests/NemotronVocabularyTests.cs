@@ -48,4 +48,16 @@ public sealed class NemotronVocabularyTests
 
         Assert.Equal("hello", text);
     }
+
+    [Fact]
+    public void IsWordStart_true_for_piece_with_sentencepiece_marker_false_for_continuation()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"nemotron-vocab-{Guid.NewGuid()}.txt");
+        // "▁believe" split into a word-start piece ("▁belie") and a continuation piece ("ve").
+        File.WriteAllLines(path, ["\u2581belie", "ve", "<blank>"]);
+        var vocabulary = new NemotronVocabulary(path);
+
+        Assert.True(vocabulary.IsWordStart(0));  // "▁belie"
+        Assert.False(vocabulary.IsWordStart(1)); // "ve" - continues the previous word
+    }
 }

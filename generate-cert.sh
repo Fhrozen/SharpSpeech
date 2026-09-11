@@ -11,7 +11,7 @@ set -e
 HOST="$1"
 PASSWORD="$2"
 OUT_DIR="./certs"
-PFX_PATH="${OUT_DIR}/sharpaudio.pfx"
+PFX_PATH="${OUT_DIR}/sharp-audio.pfx"
 
 if [ -z "$HOST" ]; then
   echo "Usage: ./generate-cert.sh <hostname-or-ip> [password]"

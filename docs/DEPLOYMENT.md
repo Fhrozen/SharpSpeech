@@ -35,8 +35,8 @@ chmod 755 model-cache assets
 version: '3.8'
 
 services:
-  fastttsr:
-    image: fhrozen/fast-ttsr:latest
+  sharp-audio:
+    image: fhrozen/sharp-audio:latest
     restart: unless-stopped
     ports:
       - "127.0.0.1:5768:5768"  # Only bind to localhost
@@ -68,7 +68,7 @@ services:
       retries: 3
       start_period: 120s
     networks:
-      - fastttsr-network
+      - sharp-audio-network
 
   # Optional: nginx reverse proxy - only needed for a publicly reachable domain (real
   # Let's Encrypt/ACME certs, rate limiting) or terminating TLS for multiple services at once.
@@ -85,12 +85,12 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./ssl:/etc/nginx/ssl:ro
     depends_on:
-      - fastttsr
+      - sharp-audio
     networks:
-      - fastttsr-network
+      - sharp-audio-network
 
 networks:
-  fastttsr-network:
+  sharp-audio-network:
     driver: bridge
 ```
 
@@ -122,17 +122,17 @@ default multi-purpose one, build with `docker build --target <stage>`:
 
 ```bash
 # TTS-only image (smaller, no Whisper/Nemotron dependencies loaded)
-docker build --target runtime-tts -t fastttsr:tts .
+docker build --target runtime-tts -t sharp-audio:tts .
 
 # ASR-only image
-docker build --target runtime-asr -t fastttsr:asr .
+docker build --target runtime-asr -t sharp-audio:asr .
 
 # Both (default target if omitted)
-docker build --target runtime-all -t fastttsr:all .
+docker build --target runtime-all -t sharp-audio:all .
 ```
 
 Run each with the matching `SERVER_MODE` env var. See `docker-compose.yml` for commented-out
-example `fastttsr-tts`/`fastttsr-asr` services using this pattern.
+example `sharp-audio-tts`/`sharp-audio-asr` services using this pattern.
 
 ---
 
@@ -145,7 +145,7 @@ example `fastttsr-tts`/`fastttsr-asr` services using this pattern.
 **1. Create ECR Repository**
 
 ```bash
-aws ecr create-repository --repository-name fastttsr
+aws ecr create-repository --repository-name sharp-audio
 ```
 
 **2. Build and Push Image**
@@ -157,12 +157,12 @@ aws ecr get-login-password --region us-east-1 | \
   123456789012.dkr.ecr.us-east-1.amazonaws.com
 
 # Build image
-docker build -t fastttsr .
+docker build -t sharp-audio .
 
 # Tag and push
-docker tag fastttsr:latest \
-  123456789012.dkr.ecr.us-east-1.amazonaws.com/fastttsr:latest
-docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/fastttsr:latest
+docker tag sharp-audio:latest \
+  123456789012.dkr.ecr.us-east-1.amazonaws.com/sharp-audio:latest
+docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/sharp-audio:latest
 ```
 
 **3. Create EFS for Model Cache**
@@ -171,22 +171,22 @@ docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/fastttsr:latest
 aws efs create-file-system \
   --performance-mode generalPurpose \
   --throughput-mode bursting \
-  --tags Key=Name,Value=fastttsr-models
+  --tags Key=Name,Value=sharp-audio-models
 ```
 
 **4. Create ECS Task Definition**
 
 ```json
 {
-  "family": "fastttsr",
+  "family": "sharp-audio",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "2048",
   "memory": "4096",
   "containerDefinitions": [
     {
-      "name": "fastttsr",
-      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/fastttsr:latest",
+      "name": "sharp-audio",
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/sharp-audio:latest",
       "essential": true,
       "environment": [
         {"name": "HTTP_PORT", "value": "5768"},
@@ -207,7 +207,7 @@ aws efs create-file-system \
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/fastttsr",
+          "awslogs-group": "/ecs/sharp-audio",
           "awslogs-region": "us-east-1",
           "awslogs-stream-prefix": "ecs"
         }
@@ -237,13 +237,13 @@ aws efs create-file-system \
 
 ```bash
 aws ecs create-service \
-  --cluster fastttsr-cluster \
-  --service-name fastttsr \
-  --task-definition fastttsr:1 \
+  --cluster sharp-audio-cluster \
+  --service-name sharp-audio \
+  --task-definition sharp-audio:1 \
   --desired-count 2 \
   --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[subnet-12345,subnet-67890],securityGroups=[sg-12345],assignPublicIp=ENABLED}" \
-  --load-balancers "targetGroupArn=arn:aws:elasticloadbalancing:...,containerName=fastttsr,containerPort=5768"
+  --load-balancers "targetGroupArn=arn:aws:elasticloadbalancing:...,containerName=sharp-audio,containerPort=5768"
 ```
 
 #### Option 2: AWS App Runner
@@ -256,7 +256,7 @@ runtime: python3.11
 build:
   commands:
     build:
-      - docker build -t fastttsr .
+      - docker build -t sharp-audio .
 run:
   runtime-version: 3.11
   command: dotnet SharpAudio.Api.dll
@@ -273,8 +273,8 @@ run:
 
 ```bash
 aws apprunner create-service \
-  --service-name fastttsr \
-  --source-configuration "ImageRepository={ImageIdentifier=123456789012.dkr.ecr.us-east-1.amazonaws.com/fastttsr:latest,ImageRepositoryType=ECR}"
+  --service-name sharp-audio \
+  --source-configuration "ImageRepository={ImageIdentifier=123456789012.dkr.ecr.us-east-1.amazonaws.com/sharp-audio:latest,ImageRepositoryType=ECR}"
 ```
 
 ---
@@ -286,7 +286,7 @@ aws apprunner create-service \
 **1. Create Resource Group**
 
 ```bash
-az group create --name fastttsr-rg --location eastus
+az group create --name sharp-audio-rg --location eastus
 ```
 
 **2. Create Azure File Share (for model cache)**
@@ -294,7 +294,7 @@ az group create --name fastttsr-rg --location eastus
 ```bash
 az storage account create \
   --name faststtrstorage \
-  --resource-group fastttsr-rg \
+  --resource-group sharp-audio-rg \
   --sku Standard_LRS
 
 az storage share create \
@@ -306,13 +306,13 @@ az storage share create \
 
 ```bash
 az container create \
-  --resource-group fastttsr-rg \
-  --name fastttsr \
-  --image fhrozen/fast-ttsr:latest \
+  --resource-group sharp-audio-rg \
+  --name sharp-audio \
+  --image fhrozen/sharp-audio:latest \
   --cpu 2 \
   --memory 4 \
   --ports 5768 \
-  --dns-name-label fastttsr \
+  --dns-name-label sharp-audio \
   --environment-variables \
     HTTP_PORT=5768 \
     MODEL_IDLE_TIMEOUT_SECONDS=60 \
@@ -328,8 +328,8 @@ az container create \
 
 ```bash
 az containerapp env create \
-  --name fastttsr-env \
-  --resource-group fastttsr-rg \
+  --name sharp-audio-env \
+  --resource-group sharp-audio-rg \
   --location eastus
 ```
 
@@ -337,10 +337,10 @@ az containerapp env create \
 
 ```bash
 az containerapp create \
-  --name fastttsr \
-  --resource-group fastttsr-rg \
-  --environment fastttsr-env \
-  --image fhrozen/fast-ttsr:latest \
+  --name sharp-audio \
+  --resource-group sharp-audio-rg \
+  --environment sharp-audio-env \
+  --image fhrozen/sharp-audio:latest \
   --cpu 2.0 \
   --memory 4Gi \
   --min-replicas 1 \
@@ -373,15 +373,15 @@ gcloud services enable \
 gcloud auth configure-docker
 
 # Build and push
-docker build -t gcr.io/PROJECT_ID/fastttsr .
-docker push gcr.io/PROJECT_ID/fastttsr
+docker build -t gcr.io/PROJECT_ID/sharp-audio .
+docker push gcr.io/PROJECT_ID/sharp-audio
 ```
 
 **3. Deploy to Cloud Run**
 
 ```bash
-gcloud run deploy fastttsr \
-  --image gcr.io/PROJECT_ID/fastttsr \
+gcloud run deploy sharp-audio \
+  --image gcr.io/PROJECT_ID/sharp-audio \
   --platform managed \
   --region us-central1 \
   --memory 4Gi \
@@ -410,7 +410,7 @@ gcloud run deploy fastttsr \
 replicaCount: 3
 
 image:
-  repository: fhrozen/fast-ttsr
+  repository: fhrozen/sharp-audio
   tag: latest
   pullPolicy: IfNotPresent
 
@@ -430,7 +430,7 @@ ingress:
         - path: /
           pathType: Prefix
   tls:
-    - secretName: fastttsr-tls
+    - secretName: sharp-audio-tls
       hosts:
         - tts.example.com
 
@@ -485,22 +485,22 @@ healthCheck:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: fastttsr
+  name: sharp-audio
   labels:
-    app: fastttsr
+    app: sharp-audio
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: fastttsr
+      app: sharp-audio
   template:
     metadata:
       labels:
-        app: fastttsr
+        app: sharp-audio
     spec:
       containers:
-      - name: fastttsr
-        image: fhrozen/fast-ttsr:latest
+      - name: sharp-audio
+        image: fhrozen/sharp-audio:latest
         ports:
         - containerPort: 5768
         env:
@@ -535,7 +535,7 @@ spec:
       volumes:
       - name: model-cache
         persistentVolumeClaim:
-          claimName: fastttsr-cache
+          claimName: sharp-audio-cache
 ```
 
 **service.yaml:**
@@ -543,7 +543,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: fastttsr
+  name: sharp-audio
 spec:
   type: LoadBalancer
   ports:
@@ -551,7 +551,7 @@ spec:
     targetPort: 5768
     protocol: TCP
   selector:
-    app: fastttsr
+    app: sharp-audio
 ```
 
 **pvc.yaml:**
@@ -559,7 +559,7 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: fastttsr-cache
+  name: sharp-audio-cache
 spec:
   accessModes:
     - ReadWriteMany
@@ -574,12 +574,12 @@ spec:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: fastttsr-hpa
+  name: sharp-audio-hpa
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: fastttsr
+    name: sharp-audio
   minReplicas: 2
   maxReplicas: 10
   metrics:
@@ -722,14 +722,14 @@ GET /health
 ### Prometheus Metrics (Future)
 
 ```
-# HELP fastttsr_requests_total Total number of TTS requests
-# TYPE fastttsr_requests_total counter
-fastttsr_requests_total{model="kokoro-q4",status="success"} 1234
+# HELP sharp-audio_requests_total Total number of TTS requests
+# TYPE sharp-audio_requests_total counter
+sharp-audio_requests_total{model="kokoro-q4",status="success"} 1234
 
-# HELP fastttsr_synthesis_duration_seconds Time spent synthesizing speech
-# TYPE fastttsr_synthesis_duration_seconds histogram
-fastttsr_synthesis_duration_seconds_bucket{model="kokoro-q4",le="0.1"} 245
-fastttsr_synthesis_duration_seconds_bucket{model="kokoro-q4",le="0.5"} 892
+# HELP sharp-audio_synthesis_duration_seconds Time spent synthesizing speech
+# TYPE sharp-audio_synthesis_duration_seconds histogram
+sharp-audio_synthesis_duration_seconds_bucket{model="kokoro-q4",le="0.1"} 245
+sharp-audio_synthesis_duration_seconds_bucket{model="kokoro-q4",le="0.5"} 892
 ```
 
 ### Grafana Dashboard
@@ -890,10 +890,10 @@ Add more instances:
 
 ```bash
 # Tag current version
-docker tag fastttsr:latest fastttsr:backup
+docker tag sharp-audio:latest sharp-audio:backup
 
 # Rollback to previous version
-docker pull fhrozen/fast-ttsr:previous-tag
+docker pull fhrozen/sharp-audio:previous-tag
 docker compose up -d
 ```
 
@@ -901,13 +901,13 @@ docker compose up -d
 
 ```bash
 # Rollback deployment
-kubectl rollout undo deployment/fastttsr
+kubectl rollout undo deployment/sharp-audio
 
 # Rollback to specific revision
-kubectl rollout undo deployment/fastttsr --to-revision=2
+kubectl rollout undo deployment/sharp-audio --to-revision=2
 
 # Check rollout status
-kubectl rollout status deployment/fastttsr
+kubectl rollout status deployment/sharp-audio
 ```
 
 ### Cloud Services
@@ -915,21 +915,21 @@ kubectl rollout status deployment/fastttsr
 **AWS ECS:**
 ```bash
 aws ecs update-service \
-  --cluster fastttsr-cluster \
-  --service fastttsr \
-  --task-definition fastttsr:1  # Previous version
+  --cluster sharp-audio-cluster \
+  --service sharp-audio \
+  --task-definition sharp-audio:1  # Previous version
 ```
 
 **Azure Container Apps:**
 ```bash
 az containerapp revision list \
-  --name fastttsr \
-  --resource-group fastttsr-rg
+  --name sharp-audio \
+  --resource-group sharp-audio-rg
 
 az containerapp revision activate \
-  --name fastttsr \
-  --resource-group fastttsr-rg \
-  --revision fastttsr--previous-revision
+  --name sharp-audio \
+  --resource-group sharp-audio-rg \
+  --revision sharp-audio--previous-revision
 ```
 
 ---

@@ -98,7 +98,7 @@ Aborted (core dumped)
 
 1. **Verify you're using latest version:**
 ```bash
-docker pull fhrozen/fast-ttsr:latest
+docker pull fhrozen/sharp-audio:latest
 ```
 
 2. **Check if CJK punctuation is being normalized:**
@@ -192,7 +192,7 @@ deploy:
 free -h
 
 # Docker container
-docker stats fastttsr
+docker stats sharp-audio
 ```
 
 ### Port Already in Use
@@ -286,7 +286,7 @@ deploy:
 **Diagnosis:**
 ```bash
 # Monitor memory over time
-watch -n 1 'docker stats --no-stream fastttsr'
+watch -n 1 'docker stats --no-stream sharp-audio'
 ```
 
 **Solutions:**
@@ -310,7 +310,7 @@ limit_req_zone $binary_remote_addr zone=tts:10m rate=10r/s;
 **4. Restart service periodically:**
 ```bash
 # Cron job to restart daily
-0 3 * * * docker compose restart fastttsr
+0 3 * * * docker compose restart sharp-audio
 ```
 
 ### High CPU Usage
@@ -427,7 +427,7 @@ curl http://localhost:5768/api/models | jq '.[] | .supportedLanguages'
 
 **1. Check logs:**
 ```bash
-docker compose logs -f fastttsr
+docker compose logs -f sharp-audio
 ```
 
 **2. Look for exceptions:**
@@ -773,15 +773,15 @@ Error response from daemon: Container ... is not running
 
 **Diagnosis:**
 ```bash
-docker compose logs fastttsr
-docker inspect fastttsr
+docker compose logs sharp-audio
+docker inspect sharp-audio
 ```
 
 **Solutions:**
 
 **1. Check image exists:**
 ```bash
-docker images | grep fastttsr
+docker images | grep sharp-audio
 ```
 
 **2. Re-pull image:**
@@ -819,7 +819,7 @@ chown -R $(whoami) model-cache
 **2. Or run with user:**
 ```yaml
 services:
-  fastttsr:
+  sharp-audio:
     user: "${UID}:${GID}"
 ```
 
@@ -993,12 +993,12 @@ ffprobe output.wav
 
 **Real-time:**
 ```bash
-docker compose logs -f fastttsr
+docker compose logs -f sharp-audio
 ```
 
 **Last 100 lines:**
 ```bash
-docker compose logs --tail=100 fastttsr
+docker compose logs --tail=100 sharp-audio
 ```
 
 **Save to file:**
@@ -1013,7 +1013,7 @@ docker compose logs > logs.txt
 docker compose ps
 
 # Detailed inspect
-docker inspect fastttsr | jq '.[0].State.Health'
+docker inspect sharp-audio | jq '.[0].State.Health'
 
 # Manual health check
 curl http://localhost:5768/health
@@ -1023,7 +1023,7 @@ curl http://localhost:5768/health
 
 **Resource usage:**
 ```bash
-docker stats fastttsr
+docker stats sharp-audio
 ```
 
 **System metrics:**

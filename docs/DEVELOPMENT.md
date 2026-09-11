@@ -373,12 +373,12 @@ Install "Debugger for Chrome" extension, then create `.vscode/launch.json`:
 
 View logs:
 ```bash
-docker compose logs -f fastttsr
+docker compose logs -f sharp-audio
 ```
 
 Enter container:
 ```bash
-docker compose exec fastttsr /bin/bash
+docker compose exec sharp-audio /bin/bash
 ```
 
 Debug inside container:
@@ -585,7 +585,7 @@ pnpm outdated
 ### Build Docker Image Locally
 
 ```bash
-docker build -t fastttsr:local .
+docker build -t sharp-audio:local .
 ```
 
 Run local image:
@@ -593,7 +593,7 @@ Run local image:
 docker run -p 5768:5768 \
   -v $(pwd)/model-cache:/cache \
   -v $(pwd)/assets:/app/assets:ro \
-  fastttsr:local
+  sharp-audio:local
 ```
 
 ### Run with Different Ports

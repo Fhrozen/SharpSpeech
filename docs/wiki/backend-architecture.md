@@ -107,7 +107,7 @@ generic asset descriptor shared by both TTS and ASR model definitions.
 | Env var | Purpose | Default |
 |---|---|---|
 | `HTTP_PORT` / `HTTPS_PORT` | Kestrel listen ports | 8080 / (none) |
-| `MODEL_CACHE_DIR` | Model download cache dir | `{TempPath}/fastttsr-cache` |
+| `MODEL_CACHE_DIR` | Model download cache dir | `{TempPath}/sharp-audio-cache` |
 | `MODEL_CONFIG_PATH` | Path to `config.json` | `{BaseDirectory}/config.json` |
 | `MODEL_IDLE_TIMEOUT_SECONDS` | In-process engine idle release timeout | 60 |
 | `ESPEAK_DATA_DIR` | espeak-ng phoneme data dir (Kokoro) | — |

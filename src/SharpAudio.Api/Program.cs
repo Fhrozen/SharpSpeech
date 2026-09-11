@@ -209,7 +209,7 @@ app.MapGet("/v1/models", (HttpContext httpContext) =>
             id = m.Name,
             @object = "model",
             created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-            owned_by = "fastttsr"
+            owned_by = "sharp-audio"
         }));
     }
 
@@ -221,7 +221,7 @@ app.MapGet("/v1/models", (HttpContext httpContext) =>
             id = m.Name,
             @object = "model",
             created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-            owned_by = "fastttsr"
+            owned_by = "sharp-audio"
         }));
     }
 

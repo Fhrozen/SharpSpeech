@@ -198,7 +198,7 @@ function downloadAudio() {
   
   const a = document.createElement('a')
   a.href = audioUrl.value
-  a.download = `fastttsr-${form.model}-${Date.now()}.wav`
+  a.download = `sharp-audio-${form.model}-${Date.now()}.wav`
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)

@@ -31,7 +31,7 @@ hostname/IP, SharpAudio relies on Kestrel's built-in certificate config - no app
 involved in loading the certificate:
 
 1. Generate a certificate: `./generate-cert.sh <your-lan-hostname-or-ip>` (prints a generated
-   password and writes `./certs/fastttsr.pfx`). It picks the best available method automatically:
+   password and writes `./certs/sharp-audio.pfx`). It picks the best available method automatically:
    - Locally-installed `mkcert`, if present - a locally-trusted CA, no browser warnings at all.
    - Otherwise a dockerized `mkcert` (`./docker/mkcert`, no local install/sudo needed) - writes the
      CA under `./certs/mkcert-ca/`. **Import `./certs/mkcert-ca/rootCA.pem` into the trust store of
@@ -445,8 +445,8 @@ and metadata. Both are loaded from the same file.
 
 ```yaml
 services:
-  fastttsr:
-    image: fhrozen/fast-ttsr:latest
+  sharp-audio:
+    image: fhrozen/sharp-audio:latest
     ports:
       - "${HOST_PORT:-5768}:${HTTP_PORT:-5768}"
       - "${HOST_HTTPS_PORT:-5769}:${HTTPS_PORT:-5769}"
@@ -461,7 +461,7 @@ services:
       AsrWorkerOptions__PortRangeStart: ${AsrWorkerOptions__PortRangeStart:-50151}
       AsrWorkerOptions__IdleTimeoutSeconds: ${AsrWorkerOptions__IdleTimeoutSeconds:-60}
       # Only used once HTTPS_PORT is set - see "HTTPS / TLS" above.
-      Kestrel__Certificates__Default__Path: /certs/fastttsr.pfx
+      Kestrel__Certificates__Default__Path: /certs/sharp-audio.pfx
       Kestrel__Certificates__Default__Password: ${CERT_PASSWORD:-}
     volumes:
       - ./model-cache:/cache
@@ -576,8 +576,8 @@ assets/
 
 ```yaml
 services:
-  fastttsr:
-    image: fhrozen/fast-ttsr:latest
+  sharp-audio:
+    image: fhrozen/sharp-audio:latest
     restart: unless-stopped
     ports:
       - "127.0.0.1:5768:5768"  # Only bind to localhost
@@ -656,7 +656,7 @@ for multiple services at once); they are illustrative snippets, not files shippe
 ### nginx
 
 ```nginx
-upstream fastttsr {
+upstream sharp-audio {
     server 127.0.0.1:5768;
 }
 
@@ -688,7 +688,7 @@ server {
     client_max_body_size 10M;
 
     location / {
-        proxy_pass http://fastttsr;
+        proxy_pass http://sharp-audio;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -702,7 +702,7 @@ server {
 
     # Health check endpoint
     location /health {
-        proxy_pass http://fastttsr/health;
+        proxy_pass http://sharp-audio/health;
         access_log off;
     }
 }
@@ -747,11 +747,11 @@ tts.example.com {
 
 ```json
 {
-  "family": "fastttsr",
+  "family": "sharp-audio",
   "containerDefinitions": [
     {
-      "name": "fastttsr",
-      "image": "fhrozen/fast-ttsr:latest",
+      "name": "sharp-audio",
+      "image": "fhrozen/sharp-audio:latest",
       "memory": 4096,
       "cpu": 2048,
       "essential": true,
@@ -803,20 +803,20 @@ tts.example.com {
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: fastttsr
+  name: sharp-audio
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: fastttsr
+      app: sharp-audio
   template:
     metadata:
       labels:
-        app: fastttsr
+        app: sharp-audio
     spec:
       containers:
-      - name: fastttsr
-        image: fhrozen/fast-ttsr:latest
+      - name: sharp-audio
+        image: fhrozen/sharp-audio:latest
         ports:
         - containerPort: 5768
         env:
@@ -849,7 +849,7 @@ spec:
       volumes:
       - name: model-cache
         persistentVolumeClaim:
-          claimName: fastttsr-cache
+          claimName: sharp-audio-cache
 ```
 
 ---

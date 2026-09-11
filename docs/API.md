@@ -189,19 +189,19 @@ GET /v1/models
       "id": "kokoro-q4",
       "object": "model",
       "created": 1715548800,
-      "owned_by": "fastttsr"
+      "owned_by": "sharp-audio"
     },
     {
       "id": "kokoro-full",
       "object": "model",
       "created": 1715548800,
-      "owned_by": "fastttsr"
+      "owned_by": "sharp-audio"
     },
     {
       "id": "supertonic-3",
       "object": "model",
       "created": 1715548800,
-      "owned_by": "fastttsr"
+      "owned_by": "sharp-audio"
     }
   ]
 }

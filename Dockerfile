@@ -40,7 +40,7 @@ VOLUME ["/cache"]
 COPY --from=backend-build /out/api/ ./
 
 # --- TTS-only image: API + TTS worker only ---
-# docker build --target runtime-tts -t fastttsr:tts .
+# docker build --target runtime-tts -t sharp-audio:tts .
 FROM runtime-base AS runtime-tts
 COPY --from=backend-build /out/worker/ ./worker/
 RUN chmod +x ./worker/SharpAudio.Worker
@@ -49,7 +49,7 @@ ENV SERVER_MODE=tts
 ENTRYPOINT ["dotnet", "SharpAudio.Api.dll"]
 
 # --- ASR-only image: API + ASR worker only ---
-# docker build --target runtime-asr -t fastttsr:asr .
+# docker build --target runtime-asr -t sharp-audio:asr .
 FROM runtime-base AS runtime-asr
 # ffmpeg normalizes any uploaded audio format (FLAC, MP3, OGG, WEBM, M4A, ...) to WAV before ASR.
 RUN apt-get update && \
@@ -66,7 +66,7 @@ ENV SERVER_MODE=asr
 ENTRYPOINT ["dotnet", "SharpAudio.Api.dll"]
 
 # --- Combined image: API + both workers (default if no --target is given) ---
-# docker build -t fastttsr:all .   (equivalent to --target runtime-all)
+# docker build -t sharp-audio:all .   (equivalent to --target runtime-all)
 FROM runtime-base AS runtime-all
 # ffmpeg normalizes any uploaded audio format (FLAC, MP3, OGG, WEBM, M4A, ...) to WAV before ASR.
 RUN apt-get update && \

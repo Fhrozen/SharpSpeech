@@ -45,7 +45,7 @@ case $TEST_TYPE in
     integration)
         echo "Running integration tests only..."
         echo "Building and starting SharpAudio service..."
-        docker compose -f docker-compose.test.yml up -d fastttsr
+        docker compose -f docker-compose.test.yml up -d sharp-audio
         
         echo "Waiting for service to be healthy..."
         sleep 10
@@ -72,7 +72,7 @@ case $TEST_TYPE in
         
         # Run integration tests
         echo "Building and starting SharpAudio service..."
-        docker compose -f docker-compose.test.yml up -d fastttsr
+        docker compose -f docker-compose.test.yml up -d sharp-audio
         
         echo "Waiting for service to be healthy..."
         sleep 10

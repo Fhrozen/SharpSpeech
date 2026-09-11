@@ -485,10 +485,10 @@ Phase 2/5, now resolved:
    (reuses the existing `ReadMonoFloat` resampler, re-encodes as a 16kHz mono PCM16 WAV) before
    handing audio to Whisper.net, mirroring what Nemotron's pipeline already did internally.
 
-**Validation performed** (against the real built `fastttsr:all` image, `docker build --target
+**Validation performed** (against the real built `sharp-audio:all` image, `docker build --target
 runtime-all`, both in-process AND full worker mode):
 - `./dotnet.sh build SharpAudio.slnx` → 0 errors after the `WhisperAsrEngine`/`WavAudioUtils` fix.
-- `docker build --target runtime-all -t fastttsr:all .` → succeeds (frontend + all 3 .NET projects
+- `docker build --target runtime-all -t sharp-audio:all .` → succeeds (frontend + all 3 .NET projects
   publish with `-r linux-x64 --self-contained false`).
 - In-process mode (`WorkerOptions__Enabled=false`, `AsrWorkerOptions__Enabled=false`): Whisper
   transcription of a Kokoro-generated WAV → 200, correct text. Nemotron transcription → 200,
@@ -688,7 +688,7 @@ ASR, it just hadn't been hit before). **Fixed**: `ModelCache` now uses a per-mod
   `Xunit.SkippableFact` package + `TestData/test_text.md` copy-to-output)
 - `src/SharpAudio.Api/Services/ModelCache.cs` (modified: per-model-name locking, bug fix)
 - `tests/run-tests.sh` (modified: new `asr-model-tests` mode)
-- `docker-compose.test.yml` (modified: new `asr-model-tests` service, self-hosting, no `fastttsr`
+- `docker-compose.test.yml` (modified: new `asr-model-tests` service, self-hosting, no `sharp-audio`
   dependency, `ASR_MODEL_TESTS=1`)
 - `Dockerfile.tests` (modified: added `libgomp1` so Whisper's native lib has a chance to load)
 - `.github/workflows/ci-tests.yml` (modified: integration-tests job now runs `dotnet test ... --filter "Category!=AsrModelTests"`, explicit belt-and-suspenders exclusion alongside the env-var gate)

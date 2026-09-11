@@ -183,8 +183,8 @@ ESPEAK_DATA_DIR=/app/assets/espeak-ng-data  # Phoneme data
 **Docker Compose:**
 ```yaml
 services:
-  fastttsr:
-    image: fhrozen/fast-ttsr:latest
+  sharp-audio:
+    image: fhrozen/sharp-audio:latest
     ports:
       - "5768:5768"
     environment:
@@ -247,7 +247,7 @@ dotnet test
 
 **Build Docker Image:**
 ```bash
-docker build -t fastttsr:local .
+docker build -t sharp-audio:local .
 ```
 
 See [Development Guide](DEVELOPMENT.md) for complete setup.

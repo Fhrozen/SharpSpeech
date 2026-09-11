@@ -299,7 +299,7 @@ Benefits:
 
 **Environment Variable (Docker):**
 ```bash
-docker run -e WorkerOptions__Enabled=true fastttsr
+docker run -e WorkerOptions__Enabled=true sharp-audio
 ```
 
 #### Worker Idle Timeout

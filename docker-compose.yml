@@ -1,10 +1,10 @@
 services:
-  fastttsr:
+  sharp-audio:
     # build:
     #   context: .
     #   dockerfile: Dockerfile
     #   target: runtime-all   # or runtime-tts / runtime-asr for a smaller single-purpose image
-    image: fhrozen/fast-ttsr:audio
+    image: fhrozen/sharp-audio:audio
     ports:
       - "${HOST_PORT:-5768}:${HTTP_PORT:-5768}"
       - "${HOST_HTTPS_PORT:-5769}:${HTTPS_PORT:-5769}"
@@ -20,7 +20,7 @@ services:
       AsrWorkerOptions__IdleTimeoutSeconds: ${AsrWorkerOptions__IdleTimeoutSeconds:-60}
       # Kestrel's built-in default-certificate loader - only used when HTTPS_PORT is set. Generate
       # a cert first with ./generate-cert.sh <your-lan-hostname-or-ip>.
-      Kestrel__Certificates__Default__Path: /certs/fastttsr.pfx
+      Kestrel__Certificates__Default__Path: /certs/sharp-audio.pfx
       Kestrel__Certificates__Default__Password: ${CERT_PASSWORD:-}
     env_file:
       - .env
@@ -30,7 +30,7 @@ services:
       - ./certs:/certs:ro
 
   # Example: TTS-only deployment, built locally from a smaller image variant.
-  # fastttsr-tts:
+  # sharp-audio-tts:
   #   build:
   #     context: .
   #     dockerfile: Dockerfile
@@ -44,7 +44,7 @@ services:
   #     - ./assets:/app/assets:ro
 
   # Example: ASR-only deployment, built locally from a smaller image variant.
-  # fastttsr-asr:
+  # sharp-audio-asr:
   #   build:
   #     context: .
   #     dockerfile: Dockerfile

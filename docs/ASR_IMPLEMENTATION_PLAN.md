@@ -493,7 +493,7 @@ natively represent WebSocket endpoints — in Swagger UI and across `docs/API.md
    `SharpAudio.Worker.Asr` spawns.
 5. Manual: `SERVER_MODE=both` — both workers spawn independently on non-overlapping port ranges,
    both UI panels/tabs appear.
-6. `docker build --target runtime-tts|runtime-asr|runtime-all -t fastttsr:<tag> .` — confirm each
+6. `docker build --target runtime-tts|runtime-asr|runtime-all -t sharp-audio:<tag> .` — confirm each
    image only contains the expected worker executable(s).
 7. `./tests/run-tests.sh all` / `docker compose -f docker-compose.test.yml up
    --abort-on-container-exit` for integration coverage including the transcription endpoint.

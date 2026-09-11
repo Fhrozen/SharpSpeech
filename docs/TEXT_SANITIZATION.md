@@ -335,7 +335,7 @@ docker compose -f docker-compose.test.yml run --rm unit-tests
 ### Integration Tests (with Concurrency)
 ```bash
 cd /export/db/SharpAudio
-docker compose -f docker-compose.test.yml up -d fastttsr
+docker compose -f docker-compose.test.yml up -d sharp-audio
 sleep 30  # Wait for service to be ready
 docker compose -f docker-compose.test.yml run --rm integration-tests
 ```

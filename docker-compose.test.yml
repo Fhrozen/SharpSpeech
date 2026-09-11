@@ -1,6 +1,6 @@
 services:
   # Main application service for integration testing
-  fastttsr:
+  sharp-audio:
     build:
       context: .
       dockerfile: Dockerfile
@@ -34,7 +34,7 @@ services:
       - ./assets:/app/assets:ro
       - ./test-results:/src/test-results
     depends_on:
-      fastttsr:
+      sharp-audio:
         condition: service_healthy
     profiles:
       - test
@@ -51,7 +51,7 @@ services:
       - test
 
   # Opt-in ASR/TTS circular model tests - self-hosts the app in-process (WebApplicationFactory),
-  # so it does NOT depend on the `fastttsr` service. Downloads real TTS+ASR models; skipped by
+  # so it does NOT depend on the `sharp-audio` service. Downloads real TTS+ASR models; skipped by
   # default (ASR_MODEL_TESTS unset) and excluded from CI - see docs/ASR_IMPLEMENTATION_PLAN.md.
   asr-model-tests:
     build:

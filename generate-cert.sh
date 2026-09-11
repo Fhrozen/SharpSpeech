@@ -1,5 +1,5 @@
 #!/bin/bash
-# Generates a TLS certificate for serving FastTTSR over HTTPS on a LAN hostname/IP (required for
+# Generates a TLS certificate for serving SharpAudio over HTTPS on a LAN hostname/IP (required for
 # browsers to expose navigator.mediaDevices outside of localhost, and for WebSocket connections to
 # be trusted - browsers do NOT reliably extend a manually-bypassed self-signed warning to
 # `new WebSocket()` handshakes). Prefers locally-installed mkcert, then dockerized mkcert
@@ -11,7 +11,7 @@ set -e
 HOST="$1"
 PASSWORD="$2"
 OUT_DIR="./certs"
-PFX_PATH="${OUT_DIR}/fastttsr.pfx"
+PFX_PATH="${OUT_DIR}/sharpaudio.pfx"
 
 if [ -z "$HOST" ]; then
   echo "Usage: ./generate-cert.sh <hostname-or-ip> [password]"
@@ -36,8 +36,8 @@ if command -v mkcert >/dev/null 2>&1; then
   mkcert -cert-file "$CERT_TMP" -key-file "$KEY_TMP" "$HOST"
 elif command -v docker >/dev/null 2>&1; then
   echo "mkcert not installed locally - using docker/mkcert instead (no sudo/local install needed)."
-  docker build -t fastttsr-mkcert ./docker/mkcert >/dev/null
-  docker run --rm --user "$(id -u):$(id -g)" -v "$(pwd)/${OUT_DIR}:/certs" fastttsr-mkcert "$HOST" "$PASSWORD"
+  docker build -t sharpaudio-mkcert ./docker/mkcert >/dev/null
+  docker run --rm --user "$(id -u):$(id -g)" -v "$(pwd)/${OUT_DIR}:/certs" sharpaudio-mkcert "$HOST" "$PASSWORD"
   chmod 600 "$PFX_PATH"
   echo ""
   echo "Certificate written to: $PFX_PATH"

@@ -5,7 +5,7 @@
 #   ./dotnet.sh restore
 #   ./dotnet.sh build
 #   ./dotnet.sh test
-#   ./dotnet.sh run --project src/FastTTSR.Api
+#   ./dotnet.sh run --project src/SharpAudio.Api
 #   ./dotnet.sh publish -c Release
 
 set -e

@@ -4,7 +4,7 @@
 #   .\dotnet.ps1 restore
 #   .\dotnet.ps1 build
 #   .\dotnet.ps1 test
-#   .\dotnet.ps1 run --project src/FastTTSR.Api
+#   .\dotnet.ps1 run --project src/SharpAudio.Api
 #   .\dotnet.ps1 publish -c Release
 
 param(

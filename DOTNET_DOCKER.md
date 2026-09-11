@@ -14,7 +14,7 @@ chmod +x dotnet.sh
 ./dotnet.sh restore
 ./dotnet.sh build
 ./dotnet.sh test
-./dotnet.sh run --project src/FastTTSR.Api
+./dotnet.sh run --project src/SharpAudio.Api
 ```
 
 ### Windows (PowerShell)
@@ -24,7 +24,7 @@ chmod +x dotnet.sh
 .\dotnet.ps1 restore
 .\dotnet.ps1 build
 .\dotnet.ps1 test
-.\dotnet.ps1 run --project src/FastTTSR.Api
+.\dotnet.ps1 run --project src/SharpAudio.Api
 ```
 
 ## Common Commands
@@ -42,7 +42,7 @@ chmod +x dotnet.sh
 ./dotnet.sh build
 
 # Build specific project
-./dotnet.sh build src/FastTTSR.Api/FastTTSR.Api.csproj
+./dotnet.sh build src/SharpAudio.Api/SharpAudio.Api.csproj
 
 # Build in Release mode
 ./dotnet.sh build -c Release
@@ -52,10 +52,10 @@ chmod +x dotnet.sh
 
 ```bash
 # Run API project
-./dotnet.sh run --project src/FastTTSR.Api
+./dotnet.sh run --project src/SharpAudio.Api
 
 # Run with specific configuration
-./dotnet.sh run --project src/FastTTSR.Api -c Release
+./dotnet.sh run --project src/SharpAudio.Api -c Release
 ```
 
 ### Run Tests
@@ -65,7 +65,7 @@ chmod +x dotnet.sh
 ./dotnet.sh test
 
 # Run specific test project
-./dotnet.sh test tests/FastTTSR.Api.Tests
+./dotnet.sh test tests/SharpAudio.Api.Tests
 
 # Run with verbose output
 ./dotnet.sh test -v normal
@@ -75,10 +75,10 @@ chmod +x dotnet.sh
 
 ```bash
 # Publish API
-./dotnet.sh publish src/FastTTSR.Api/FastTTSR.Api.csproj -c Release -o ./publish/api
+./dotnet.sh publish src/SharpAudio.Api/SharpAudio.Api.csproj -c Release -o ./publish/api
 
 # Publish Worker
-./dotnet.sh publish src/FastTTSR.Worker/FastTTSR.Worker.csproj -c Release -o ./publish/worker
+./dotnet.sh publish src/SharpAudio.Worker/SharpAudio.Worker.csproj -c Release -o ./publish/worker
 ```
 
 ### Clean Build Artifacts
@@ -90,7 +90,7 @@ chmod +x dotnet.sh
 ### Add NuGet Package
 
 ```bash
-./dotnet.sh add src/FastTTSR.Api package Newtonsoft.Json
+./dotnet.sh add src/SharpAudio.Api package Newtonsoft.Json
 ```
 
 ### Create New Project

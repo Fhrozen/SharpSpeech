@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.Options;
+namespace SharpAudio.Api.Options;
 
 /// <summary>
 /// Configuration options for worker process management
@@ -10,7 +10,7 @@ public sealed class WorkerOptions
     /// <summary>
     /// Path to the worker executable
     /// </summary>
-    public string ExecutablePath { get; init; } = "./FastTTSR.Worker";
+    public string ExecutablePath { get; init; } = "./SharpAudio.Worker";
 
     /// <summary>
     /// Idle timeout in seconds before worker self-terminates

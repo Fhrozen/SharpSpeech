@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace FastTTSR.Api.IntegrationTests.Support;
+namespace SharpAudio.Api.IntegrationTests.Support;
 
 /// <summary>Checks whether the `ffmpeg` binary is available on PATH, so ffmpeg-dependent tests can
 /// skip gracefully in environments (e.g. the plain SDK image used by ./dotnet.sh) that don't have

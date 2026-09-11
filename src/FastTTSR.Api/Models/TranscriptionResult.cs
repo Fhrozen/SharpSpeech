@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.Models;
+namespace SharpAudio.Api.Models;
 
 public sealed record TranscriptionResult(
     string Text,

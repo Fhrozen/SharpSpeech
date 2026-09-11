@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>
 /// Reads Nemotron's vocab.txt (plain id-per-line piece list, one entry per RNNT vocabulary id -

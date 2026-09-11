@@ -4,7 +4,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
-namespace FastTTSR.Api.IntegrationTests;
+namespace SharpAudio.Api.IntegrationTests;
 
 /// <summary>
 /// Integration tests for speech synthesis endpoint

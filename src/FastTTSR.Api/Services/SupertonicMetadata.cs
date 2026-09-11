@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 public static class SupertonicMetadata
 {

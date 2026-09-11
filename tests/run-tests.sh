@@ -2,7 +2,7 @@
 set -e
 
 echo "=========================================="
-echo "FastTTSR Docker Test Runner"
+echo "SharpAudio Docker Test Runner"
 echo "=========================================="
 echo ""
 
@@ -44,7 +44,7 @@ case $TEST_TYPE in
     
     integration)
         echo "Running integration tests only..."
-        echo "Building and starting FastTTSR service..."
+        echo "Building and starting SharpAudio service..."
         docker compose -f docker-compose.test.yml up -d fastttsr
         
         echo "Waiting for service to be healthy..."
@@ -71,7 +71,7 @@ case $TEST_TYPE in
         echo ""
         
         # Run integration tests
-        echo "Building and starting FastTTSR service..."
+        echo "Building and starting SharpAudio service..."
         docker compose -f docker-compose.test.yml up -d fastttsr
         
         echo "Waiting for service to be healthy..."

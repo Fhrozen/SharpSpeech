@@ -1,10 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
-using FastTTSR.Api.Contracts;
+using SharpAudio.Api.Contracts;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
-namespace FastTTSR.Api.IntegrationTests;
+namespace SharpAudio.Api.IntegrationTests;
 
 /// <summary>
 /// Tests for Japanese text synthesis under concurrent load to verify espeak-ng thread safety.

@@ -3,12 +3,12 @@ using System.Net.Http.Json;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
-using FastTTSR.Api.IntegrationTests.Support;
+using SharpAudio.Api.IntegrationTests.Support;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 using Xunit.Abstractions;
 
-namespace FastTTSR.Api.IntegrationTests;
+namespace SharpAudio.Api.IntegrationTests;
 
 /// <summary>
 /// Circular TTS -> ASR tests: synthesizes real audio via the Supertonic-3 TTS model, then feeds it

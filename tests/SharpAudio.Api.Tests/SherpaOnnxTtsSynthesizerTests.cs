@@ -1,8 +1,8 @@
-using FastTTSR.Api.Contracts;
-using FastTTSR.Api.Models;
-using FastTTSR.Api.Services;
+using SharpAudio.Api.Contracts;
+using SharpAudio.Api.Models;
+using SharpAudio.Api.Services;
 
-namespace FastTTSR.Api.Tests;
+namespace SharpAudio.Api.Tests;
 
 public sealed class SherpaOnnxTtsSynthesizerTests
 {

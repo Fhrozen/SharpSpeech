@@ -30,14 +30,14 @@ jobs:
           dotnet-quality: 'preview'
       
       - name: Restore dependencies
-        run: dotnet restore tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj
+        run: dotnet restore tests/SharpAudio.Api.Tests/SharpAudio.Api.Tests.csproj
       
       - name: Build test project
-        run: dotnet build tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj --no-restore --configuration Release
+        run: dotnet build tests/SharpAudio.Api.Tests/SharpAudio.Api.Tests.csproj --no-restore --configuration Release
       
       - name: Run unit tests
         run: |
-          dotnet test tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj \
+          dotnet test tests/SharpAudio.Api.Tests/SharpAudio.Api.Tests.csproj \
             --no-build \
             --configuration Release \
             --logger "trx;LogFileName=unit-test-results.trx" \
@@ -79,7 +79,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: model-cache
-          key: model-cache-${{ hashFiles('src/FastTTSR.Api/config.json') }}-v1
+          key: model-cache-${{ hashFiles('src/SharpAudio.Api/config.json') }}-v1
           restore-keys: |
             model-cache-
       
@@ -88,23 +88,23 @@ jobs:
       
       - name: Restore dependencies
         run: |
-          dotnet restore src/FastTTSR.Api/FastTTSR.Api.csproj
-          dotnet restore tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj
+          dotnet restore src/SharpAudio.Api/SharpAudio.Api.csproj
+          dotnet restore tests/SharpAudio.Api.IntegrationTests/SharpAudio.Api.IntegrationTests.csproj
       
       - name: Build API project
-        run: dotnet build src/FastTTSR.Api/FastTTSR.Api.csproj --no-restore --configuration Release
+        run: dotnet build src/SharpAudio.Api/SharpAudio.Api.csproj --no-restore --configuration Release
       
       - name: Build integration test project
-        run: dotnet build tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj --no-restore --configuration Release
+        run: dotnet build tests/SharpAudio.Api.IntegrationTests/SharpAudio.Api.IntegrationTests.csproj --no-restore --configuration Release
       
-      - name: Start FastTTSR API service
+      - name: Start SharpAudio API service
         run: |
           export MODEL_CACHE_DIR="${PWD}/model-cache"
           export ESPEAK_DATA_DIR="/usr/share/espeak-ng-data"
           export HTTP_PORT="8080"
           export ASPNETCORE_ENVIRONMENT="Development"
           
-          cd src/FastTTSR.Api
+          cd src/SharpAudio.Api
           nohup dotnet run --no-build --configuration Release > ../../api-service.log 2>&1 &
           echo $! > ../../api-service.pid
           cd ../..
@@ -142,7 +142,7 @@ jobs:
           MODEL_CACHE_DIR: ${{ github.workspace }}/model-cache
           ESPEAK_DATA_DIR: /usr/share/espeak-ng-data
         run: |
-          dotnet test tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj \
+          dotnet test tests/SharpAudio.Api.IntegrationTests/SharpAudio.Api.IntegrationTests.csproj \
             --no-build \
             --configuration Release \
             --filter "Category!=AsrModelTests" \

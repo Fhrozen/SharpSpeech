@@ -1,14 +1,14 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
-using FastTTSR.Api.Contracts;
-using FastTTSR.Api.Models;
-using FastTTSR.Worker.Asr.Grpc;
+using SharpAudio.Api.Contracts;
+using SharpAudio.Api.Models;
+using SharpAudio.Worker.Asr.Grpc;
 using Google.Protobuf;
 using Grpc.Core;
 using Grpc.Net.Client;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>
 /// Proxy transcriber that routes requests to the ASR worker process via gRPC (mirrors

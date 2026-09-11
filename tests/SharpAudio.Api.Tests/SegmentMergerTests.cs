@@ -1,7 +1,7 @@
-using FastTTSR.Api.Models;
-using FastTTSR.Api.Services;
+using SharpAudio.Api.Models;
+using SharpAudio.Api.Services;
 
-namespace FastTTSR.Api.Tests;
+namespace SharpAudio.Api.Tests;
 
 public sealed class SegmentMergerTests
 {

@@ -1,8 +1,8 @@
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>
 /// Monitors worker idle time and triggers shutdown callback after timeout. Shared by all
-/// worker projects (TTS, ASR) via their ProjectReference to FastTTSR.Api.
+/// worker projects (TTS, ASR) via their ProjectReference to SharpAudio.Api.
 /// </summary>
 public sealed class IdleMonitor : IDisposable
 {

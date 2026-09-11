@@ -1,4 +1,4 @@
-# FastTTSR Wiki — Frontend
+# SharpAudio Wiki — Frontend
 
 > Linked from [docs/LLM_WIKI.md](../LLM_WIKI.md). Covers `frontend/`: structure, components, state
 > management, and capability discovery.

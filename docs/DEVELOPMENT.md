@@ -1,6 +1,6 @@
 # Development Guide
 
-This guide will help you set up a local development environment for FastTTSR.
+This guide will help you set up a local development environment for SharpAudio.
 
 ## Prerequisites
 
@@ -34,8 +34,8 @@ This guide will help you set up a local development environment for FastTTSR.
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/FastTTSR.git
-cd FastTTSR
+git clone https://github.com/yourusername/SharpAudio.git
+cd SharpAudio
 ```
 
 ### Run with Docker (Easiest)
@@ -65,7 +65,7 @@ Access the application:
 #### 1. Install Dependencies
 
 ```bash
-cd src/FastTTSR.Api
+cd src/SharpAudio.Api
 dotnet restore
 ```
 
@@ -116,7 +116,7 @@ mkdir -p assets
 #### 5. Run the Backend
 
 ```bash
-cd src/FastTTSR.Api
+cd src/SharpAudio.Api
 dotnet run
 ```
 
@@ -186,9 +186,9 @@ Output will be in `frontend/dist/`.
 ## Project Structure
 
 ```
-FastTTSR/
+SharpAudio/
 ├── src/
-│   └── FastTTSR.Api/              # Backend API
+│   └── SharpAudio.Api/              # Backend API
 │       ├── Program.cs             # Entry point & endpoint definitions
 │       ├── appsettings.json       # Configuration
 │       ├── config.json            # Model definitions
@@ -216,8 +216,8 @@ FastTTSR/
 │   └── tsconfig.json
 │
 ├── tests/                         # Test suites
-│   ├── FastTTSR.Api.Tests/       # Unit tests
-│   └── FastTTSR.Api.IntegrationTests/  # Integration tests
+│   ├── SharpAudio.Api.Tests/       # Unit tests
+│   └── SharpAudio.Api.IntegrationTests/  # Integration tests
 │
 ├── model-cache/                   # Downloaded models (gitignored)
 ├── assets/                        # Static assets
@@ -227,7 +227,7 @@ FastTTSR/
 ├── docs/                          # Documentation
 ├── docker-compose.yml
 ├── Dockerfile
-└── FastTTSR.slnx                 # Solution file
+└── SharpAudio.slnx                 # Solution file
 ```
 
 ---
@@ -252,10 +252,10 @@ Edit code in your IDE. The development server will auto-reload on changes.
 
 ```bash
 # Backend unit tests
-dotnet test tests/FastTTSR.Api.Tests
+dotnet test tests/SharpAudio.Api.Tests
 
 # Backend integration tests
-dotnet test tests/FastTTSR.Api.IntegrationTests
+dotnet test tests/SharpAudio.Api.IntegrationTests
 
 # All tests
 dotnet test
@@ -319,9 +319,9 @@ Create `.vscode/launch.json`:
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
-      "program": "${workspaceFolder}/src/FastTTSR.Api/bin/Debug/net10.0/FastTTSR.Api.dll",
+      "program": "${workspaceFolder}/src/SharpAudio.Api/bin/Debug/net10.0/SharpAudio.Api.dll",
       "args": [],
-      "cwd": "${workspaceFolder}/src/FastTTSR.Api",
+      "cwd": "${workspaceFolder}/src/SharpAudio.Api",
       "env": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "MODEL_CACHE_DIR": "${workspaceFolder}/model-cache",
@@ -339,8 +339,8 @@ Set breakpoints and press F5 to start debugging.
 
 #### Visual Studio 2022
 
-1. Open `FastTTSR.slnx`
-2. Set `FastTTSR.Api` as startup project
+1. Open `SharpAudio.slnx`
+2. Set `SharpAudio.Api` as startup project
 3. Press F5 to debug
 
 ### Frontend Debugging
@@ -399,16 +399,16 @@ curl http://localhost:5768/health
 
 ### Unit Tests
 
-Located in `tests/FastTTSR.Api.Tests/`
+Located in `tests/SharpAudio.Api.Tests/`
 
 **Run all unit tests:**
 ```bash
-dotnet test tests/FastTTSR.Api.Tests
+dotnet test tests/SharpAudio.Api.Tests
 ```
 
 **Run specific test:**
 ```bash
-dotnet test tests/FastTTSR.Api.Tests --filter "FullyQualifiedName~KokoroMetadataTests"
+dotnet test tests/SharpAudio.Api.Tests --filter "FullyQualifiedName~KokoroMetadataTests"
 ```
 
 **Example test:**
@@ -426,11 +426,11 @@ public void TryNormalizeLanguage_EnglishAliases_ReturnsEnUs()
 
 ### Integration Tests
 
-Located in `tests/FastTTSR.Api.IntegrationTests/`
+Located in `tests/SharpAudio.Api.IntegrationTests/`
 
 **Run integration tests:**
 ```bash
-dotnet test tests/FastTTSR.Api.IntegrationTests
+dotnet test tests/SharpAudio.Api.IntegrationTests
 ```
 
 **Example integration test:**
@@ -628,7 +628,7 @@ dotnet run
 dotnet tool install -g dotnet-trace
 
 # Start profiling
-dotnet-trace collect --process-id $(pidof FastTTSR.Api)
+dotnet-trace collect --process-id $(pidof SharpAudio.Api)
 
 # Analyze with PerfView or speedscope.app
 ```
@@ -650,7 +650,7 @@ public class SynthesisBenchmarks
 
 Run:
 ```bash
-dotnet run -c Release --project tests/FastTTSR.Api.Benchmarks
+dotnet run -c Release --project tests/SharpAudio.Api.Benchmarks
 ```
 
 ---
@@ -763,5 +763,5 @@ Brief description of changes
 - [Visual Studio Code](https://code.visualstudio.com/)
 
 ### Community
-- [GitHub Issues](https://github.com/yourusername/FastTTSR/issues)
-- [Discussions](https://github.com/yourusername/FastTTSR/discussions)
+- [GitHub Issues](https://github.com/yourusername/SharpAudio/issues)
+- [Discussions](https://github.com/yourusername/SharpAudio/discussions)

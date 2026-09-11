@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>
 /// Holds parsed voice style tensors loaded from a Supertonic-3 voice style JSON file.

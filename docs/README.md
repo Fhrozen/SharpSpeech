@@ -1,6 +1,6 @@
-# FastTTSR Documentation
+# SharpAudio Documentation
 
-Welcome to the FastTTSR documentation! This guide will help you get started with FastTTSR, a high-performance Text-to-Speech REST API with OpenAI-compatible endpoints.
+Welcome to the SharpAudio documentation! This guide will help you get started with SharpAudio, a high-performance Text-to-Speech REST API with OpenAI-compatible endpoints.
 
 ## 📚 Documentation Index
 
@@ -40,8 +40,8 @@ Welcome to the FastTTSR documentation! This guide will help you get started with
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/FastTTSR.git
-cd FastTTSR
+git clone https://github.com/yourusername/SharpAudio.git
+cd SharpAudio
 
 # Start the service
 docker compose up -d
@@ -91,7 +91,7 @@ curl -X POST http://localhost:5768/v1/audio/speech \
 
 ### Models
 
-FastTTSR supports multiple TTS models:
+SharpAudio supports multiple TTS models:
 - **kokoro-q4** - Fast, quantized (production)
 - **kokoro-full** - High quality, full precision
 - **supertonic-3** - Multilingual, 31 languages
@@ -160,7 +160,7 @@ Client → API Endpoints → Service Layer → TTS Engine → ONNX Runtime
                                                     → espeak-ng
 ```
 
-FastTTSR uses:
+SharpAudio uses:
 - **ASP.NET Core** - REST API
 - **ONNX Runtime** - Model inference
 - **espeak-ng** - Phonemization (Kokoro)
@@ -231,7 +231,7 @@ See [Troubleshooting Guide](TROUBLESHOOTING.md) for detailed solutions.
 **Local Development:**
 ```bash
 # Backend
-cd src/FastTTSR.Api
+cd src/SharpAudio.Api
 dotnet run
 
 # Frontend
@@ -295,12 +295,12 @@ See [Models Documentation](MODELS.md) for details.
 - Visit [Swagger UI](http://localhost:5768/swagger) when running
 
 ### Community
-- **Issues:** Report bugs on [GitHub Issues](https://github.com/yourusername/FastTTSR/issues)
-- **Discussions:** Ask questions in [GitHub Discussions](https://github.com/yourusername/FastTTSR/discussions)
+- **Issues:** Report bugs on [GitHub Issues](https://github.com/yourusername/SharpAudio/issues)
+- **Discussions:** Ask questions in [GitHub Discussions](https://github.com/yourusername/SharpAudio/discussions)
 - **Contributing:** See [Development Guide](DEVELOPMENT.md)
 
 ### Resources
-- [Main Repository](https://github.com/yourusername/FastTTSR)
+- [Main Repository](https://github.com/yourusername/SharpAudio)
 - [Kokoro Model](https://huggingface.co/hexgrad/Kokoro-82M)
 - [Supertonic Model](https://huggingface.co/Supertone/supertonic-3)
 - [ONNX Runtime](https://onnxruntime.ai/)

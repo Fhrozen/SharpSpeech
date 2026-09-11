@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.Contracts;
+namespace SharpAudio.Api.Contracts;
 
 /// <summary>
 /// Tells the frontend which task types this server instance was started with (SERVER_MODE).

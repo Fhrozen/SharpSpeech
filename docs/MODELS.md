@@ -1,6 +1,6 @@
 # TTS & ASR Models Documentation
 
-FastTTSR supports multiple state-of-the-art Text-to-Speech models and Speech-to-Text (ASR) models, each with unique characteristics and use cases.
+SharpAudio supports multiple state-of-the-art Text-to-Speech models and Speech-to-Text (ASR) models, each with unique characteristics and use cases.
 
 ## Table of Contents
 
@@ -201,7 +201,7 @@ Vocoder → PCM Audio → WAV File
 
 ## ASR Models
 
-FastTTSR also supports Speech-to-Text (ASR/transcription) via `/v1/audio/transcriptions`, when
+SharpAudio also supports Speech-to-Text (ASR/transcription) via `/v1/audio/transcriptions`, when
 `SERVER_MODE` enables ASR (`asr` or `both`). Models are selected the same way as TTS: by `name` in
 the request.
 
@@ -241,7 +241,7 @@ Segment-by-segment transcription → Concatenated text
   chunks (65 frames: 9 pre-encode cache + 56 new frames), threading `cache_last_channel`/
   `cache_last_time` tensors between chunks so the model's internal state carries over as if
   streaming, even though today's HTTP API is whole-file batch only
-- **Languages:** 35+ (see `src/FastTTSR.Api/config.json` for the full list); language conditioning
+- **Languages:** 35+ (see `src/SharpAudio.Api/config.json` for the full list); language conditioning
   uses a fixed `lang_id` integer table (`Services/NemotronLanguages.cs`), not vocab.txt tags
 - **Feature extraction:** all hyperparameters (mel scale/filterbank, framing, `log_eps`, chunk
   size, `lang_id` mapping) are sourced from `genai_config.json`, ported from a validated

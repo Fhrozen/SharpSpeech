@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This guide covers various deployment strategies for FastTTSR in production environments.
+This guide covers various deployment strategies for SharpAudio in production environments.
 
 ## Table of Contents
 
@@ -259,7 +259,7 @@ build:
       - docker build -t fastttsr .
 run:
   runtime-version: 3.11
-  command: dotnet FastTTSR.Api.dll
+  command: dotnet SharpAudio.Api.dll
   network:
     port: 5768
   env:

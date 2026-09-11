@@ -1,7 +1,7 @@
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>Raw Silero VAD ONNX session wrapper - ported from the validated Python reference's
 /// SileroVadOrt (pyscripts/nemotron_speech_ort_only.py). Tensor names ("input"/"state"/"sr" in,

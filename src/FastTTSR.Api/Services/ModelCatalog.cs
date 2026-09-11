@@ -1,7 +1,7 @@
 using System.Text.Json;
-using FastTTSR.Api.Models;
+using SharpAudio.Api.Models;
 
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 public sealed class ModelCatalog : IModelCatalog
 {

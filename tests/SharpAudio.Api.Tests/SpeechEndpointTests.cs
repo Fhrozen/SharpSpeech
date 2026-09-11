@@ -1,8 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
-using FastTTSR.Api.Contracts;
-using FastTTSR.Api.Models;
-using FastTTSR.Api.Services;
+using SharpAudio.Api.Contracts;
+using SharpAudio.Api.Models;
+using SharpAudio.Api.Services;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -11,7 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 
-namespace FastTTSR.Api.Tests;
+namespace SharpAudio.Api.Tests;
 
 public sealed class SpeechEndpointTests
 {

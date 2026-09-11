@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.IntegrationTests.Support;
+namespace SharpAudio.Api.IntegrationTests.Support;
 
 /// <summary>Concatenates several PCM16 WAV clips (same sample rate/channels) into one long WAV,
 /// inserting a short silence gap between clips - used to build the long conversation test audio.</summary>

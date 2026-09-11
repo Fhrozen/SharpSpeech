@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.Contracts;
+namespace SharpAudio.Api.Contracts;
 
 /// <summary>
 /// Error response returned when a request fails

@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>One incremental update from a streaming session: <paramref name="Text"/> is always
 /// scoped to the CURRENT segment only (never the whole conversation, to keep every message

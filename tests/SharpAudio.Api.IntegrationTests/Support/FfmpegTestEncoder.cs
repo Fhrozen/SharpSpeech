@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace FastTTSR.Api.IntegrationTests.Support;
+namespace SharpAudio.Api.IntegrationTests.Support;
 
 /// <summary>Test-only helper that encodes WAV bytes into another container/codec via ffmpeg -
 /// the reverse direction of production's AudioFormatConverter - used to build real FLAC/MP3

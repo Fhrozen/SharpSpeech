@@ -1,6 +1,6 @@
-using FastTTSR.Api.Models;
+using SharpAudio.Api.Models;
 
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>Merges segments shorter than a minimum duration into a neighbor so no transcribed
 /// text is ever silently dropped.</summary>

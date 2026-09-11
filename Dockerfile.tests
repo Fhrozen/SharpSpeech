@@ -9,15 +9,15 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy solution and project files
-COPY FastTTSR.slnx ./
-COPY src/FastTTSR.Api/FastTTSR.Api.csproj src/FastTTSR.Api/
-COPY tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj tests/FastTTSR.Api.Tests/
-COPY tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj tests/FastTTSR.Api.IntegrationTests/
+COPY SharpAudio.slnx ./
+COPY src/SharpAudio.Api/SharpAudio.Api.csproj src/SharpAudio.Api/
+COPY tests/SharpAudio.Api.Tests/SharpAudio.Api.Tests.csproj tests/SharpAudio.Api.Tests/
+COPY tests/SharpAudio.Api.IntegrationTests/SharpAudio.Api.IntegrationTests.csproj tests/SharpAudio.Api.IntegrationTests/
 
 # Restore all projects
-RUN dotnet restore src/FastTTSR.Api/FastTTSR.Api.csproj
-RUN dotnet restore tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj
-RUN dotnet restore tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj
+RUN dotnet restore src/SharpAudio.Api/SharpAudio.Api.csproj
+RUN dotnet restore tests/SharpAudio.Api.Tests/SharpAudio.Api.Tests.csproj
+RUN dotnet restore tests/SharpAudio.Api.IntegrationTests/SharpAudio.Api.IntegrationTests.csproj
 
 # Copy all source files
 COPY src/ src/
@@ -28,4 +28,4 @@ WORKDIR /src
 ENV ESPEAK_DATA_DIR=/app/assets/espeak-ng-data
 # Note: /app/assets should be mounted as a volume with espeak-ng-data
 ENTRYPOINT ["dotnet", "test", "--logger:console;verbosity=detailed", "--no-restore"]
-CMD ["tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj"]
+CMD ["tests/SharpAudio.Api.IntegrationTests/SharpAudio.Api.IntegrationTests.csproj"]

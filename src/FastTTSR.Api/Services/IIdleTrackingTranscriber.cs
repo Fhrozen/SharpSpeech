@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>
 /// Interface for transcribers that support idle model monitoring and cleanup.

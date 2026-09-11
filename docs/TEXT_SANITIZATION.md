@@ -27,7 +27,7 @@ The espeak-ng C library (libespeak-ng.so.1) is also sensitive to certain special
 ## Solution
 Implemented **three-layer protection**:
 
-### Layer 1: Thread-Safe espeak Wrapper ([EspeakWrapper.cs](../src/FastTTSR.Api/Services/Phonemization/EspeakWrapper.cs))
+### Layer 1: Thread-Safe espeak Wrapper ([EspeakWrapper.cs](../src/SharpAudio.Api/Services/Phonemization/EspeakWrapper.cs))
 Added **critical thread synchronization** using `SemaphoreSlim` to serialize all espeak-ng calls:
 
 **Key Changes:**
@@ -55,7 +55,7 @@ finally
 }
 ```
 
-### Layer 2: API-Level Text Sanitization ([TextSanitizer.cs](../src/FastTTSR.Api/Services/TextSanitizer.cs))
+### Layer 2: API-Level Text Sanitization ([TextSanitizer.cs](../src/SharpAudio.Api/Services/TextSanitizer.cs))
 Applied in `Program.cs` before TTS synthesis:
 
 **Cleaning Operations:**
@@ -81,7 +81,7 @@ Applied in `Program.cs` before TTS synthesis:
 8. Normalize excessive whitespace (multiple spaces → single space)
 9. Limit consecutive newlines (max 2 for one blank line)
 
-### Layer 3: Espeak-Level Error Handling ([EspeakWrapper.cs](../src/FastTTSR.Api/Services/Phonemization/EspeakWrapper.cs))
+### Layer 3: Espeak-Level Error Handling ([EspeakWrapper.cs](../src/SharpAudio.Api/Services/Phonemization/EspeakWrapper.cs))
 Applied immediately before calling espeak_TextToPhonemes:
 
 **Safety Measures:**
@@ -93,7 +93,7 @@ Applied immediately before calling espeak_TextToPhonemes:
 ## Thread Safety Testing
 
 ### Concurrent Japanese Text Synthesis
-Created comprehensive tests in [JapaneseConcurrencyTests.cs](../tests/FastTTSR.Api.IntegrationTests/JapaneseConcurrencyTests.cs):
+Created comprehensive tests in [JapaneseConcurrencyTests.cs](../tests/SharpAudio.Api.IntegrationTests/JapaneseConcurrencyTests.cs):
 
 1. **Concurrent_Japanese_requests_should_not_crash**: 10 different Japanese texts concurrently
 2. **Stress_test_20_concurrent_Japanese_requests**: 20 identical Japanese requests
@@ -164,7 +164,7 @@ Use English format
 ```
 
 ## Testing
-Comprehensive unit tests are available in [TextSanitizerTests.cs](../tests/FastTTSR.Api.Tests/TextSanitizerTests.cs):
+Comprehensive unit tests are available in [TextSanitizerTests.cs](../tests/SharpAudio.Api.Tests/TextSanitizerTests.cs):
 
 - Markdown bullets removal
 - Markdown headers removal
@@ -178,36 +178,36 @@ Comprehensive unit tests are available in [TextSanitizerTests.cs](../tests/FastT
 
 Run tests:
 ```bash
-cd /export/db/FastTTSR
-dotnet test tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj --filter TextSanitizerTests
+cd /export/db/SharpAudio
+dotnet test tests/SharpAudio.Api.Tests/SharpAudio.Api.Tests.csproj --filter TextSanitizerTests
 ```
 
 ## Implementation Details
 
 ### Files Modified
-1. **src/FastTTSR.Api/Services/Phonemization/EspeakWrapper.cs** (CRITICAL FIX)
+1. **src/SharpAudio.Api/Services/Phonemization/EspeakWrapper.cs** (CRITICAL FIX)
    - Added `SemaphoreSlim _espeakLock` for thread synchronization
    - Wrapped `SetVoice()` with lock (espeak internal state modification)
    - Wrapped `espeak_TextToPhonemes()` + `Marshal.PtrToStringUTF8()` with lock (pointer safety)
    - Added detailed comments explaining the thread-safety requirements
 
-2. **src/FastTTSR.Api/Services/TextSanitizer.cs** (existing)
+2. **src/SharpAudio.Api/Services/TextSanitizer.cs** (existing)
    - Static utility class with regex-based text cleaning
    - Comprehensive special character filtering
    - Preserves natural language readability
 
-3. **src/FastTTSR.Api/Program.cs** (existing)
+3. **src/SharpAudio.Api/Program.cs** (existing)
    - Integrated sanitizer in `/v1/audio/speech` endpoint
    - Validates sanitized output is not empty
    - Returns 400 Bad Request if only unsupported chars
 
-4. **tests/FastTTSR.Api.IntegrationTests/JapaneseConcurrencyTests.cs** (NEW)
+4. **tests/SharpAudio.Api.IntegrationTests/JapaneseConcurrencyTests.cs** (NEW)
    - 6 comprehensive concurrency tests for Japanese text
    - Tests 10-20 concurrent requests
    - Mixed language testing
    - Complex character testing (emojis, symbols, kanji)
 
-5. **tests/FastTTSR.Api.Tests/TextSanitizerTests.cs** (existing)
+5. **tests/SharpAudio.Api.Tests/TextSanitizerTests.cs** (existing)
    - 20+ unit tests covering all sanitization scenarios
    - Edge case validation
    - Regression test suite
@@ -324,7 +324,7 @@ curl -X POST http://localhost:9090/v1/audio/speech \
 
 ### Unit Tests
 ```bash
-cd /export/db/FastTTSR
+cd /export/db/SharpAudio
 docker compose -f docker-compose.test.yml run --rm unit-tests
 ```
 
@@ -334,7 +334,7 @@ docker compose -f docker-compose.test.yml run --rm unit-tests
 
 ### Integration Tests (with Concurrency)
 ```bash
-cd /export/db/FastTTSR
+cd /export/db/SharpAudio
 docker compose -f docker-compose.test.yml up -d fastttsr
 sleep 30  # Wait for service to be ready
 docker compose -f docker-compose.test.yml run --rm integration-tests

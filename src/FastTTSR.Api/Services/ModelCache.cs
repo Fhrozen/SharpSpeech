@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
-using FastTTSR.Api.Models;
-using FastTTSR.Api.Options;
+using SharpAudio.Api.Models;
+using SharpAudio.Api.Options;
 using Microsoft.Extensions.Options;
 
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 public sealed class ModelCache : IModelCache
 {

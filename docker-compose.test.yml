@@ -44,7 +44,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.tests
-    command: ["tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj"]
+    command: ["tests/SharpAudio.Api.Tests/SharpAudio.Api.Tests.csproj"]
     volumes:
       - ./test-results:/src/test-results
     profiles:
@@ -57,7 +57,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.tests
-    command: ["tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj", "--filter", "Category=AsrModelTests"]
+    command: ["tests/SharpAudio.Api.IntegrationTests/SharpAudio.Api.IntegrationTests.csproj", "--filter", "Category=AsrModelTests"]
     environment:
       ASR_MODEL_TESTS: "1"
       MODEL_CACHE_DIR: /cache

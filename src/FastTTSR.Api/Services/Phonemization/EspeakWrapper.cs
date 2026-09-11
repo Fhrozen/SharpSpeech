@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
-namespace FastTTSR.Api.Services.Phonemization;
+namespace SharpAudio.Api.Services.Phonemization;
 
 public sealed class EspeakWrapper : IDisposable
 {

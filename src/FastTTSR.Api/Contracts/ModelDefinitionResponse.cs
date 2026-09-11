@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.Contracts;
+namespace SharpAudio.Api.Contracts;
 
 /// <summary>
 /// Speaker metadata with display name and description

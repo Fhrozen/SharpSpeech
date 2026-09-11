@@ -26,7 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\FastTTSR.Api\FastTTSR.Api.csproj" />
+    <ProjectReference Include="..\..\src\SharpAudio.Api\SharpAudio.Api.csproj" />
   </ItemGroup>
 
 </Project>

@@ -7,20 +7,20 @@ RUN pnpm build
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0-preview AS backend-build
 WORKDIR /src
-COPY FastTTSR.slnx ./
-COPY src/FastTTSR.Api/FastTTSR.Api.csproj src/FastTTSR.Api/
-COPY src/FastTTSR.Worker/FastTTSR.Worker.csproj src/FastTTSR.Worker/
-COPY src/FastTTSR.Worker.Asr/FastTTSR.Worker.Asr.csproj src/FastTTSR.Worker.Asr/
-RUN dotnet restore src/FastTTSR.Api/FastTTSR.Api.csproj
-RUN dotnet restore src/FastTTSR.Worker/FastTTSR.Worker.csproj
-RUN dotnet restore src/FastTTSR.Worker.Asr/FastTTSR.Worker.Asr.csproj
-COPY src/FastTTSR.Api/ src/FastTTSR.Api/
-COPY src/FastTTSR.Worker/ src/FastTTSR.Worker/
-COPY src/FastTTSR.Worker.Asr/ src/FastTTSR.Worker.Asr/
-COPY --from=frontend-build /app/frontend/dist/ src/FastTTSR.Api/wwwroot/
-RUN dotnet publish src/FastTTSR.Api/FastTTSR.Api.csproj -c Release -o /out/api -r linux-x64 --self-contained false /p:UseAppHost=false
-RUN dotnet publish src/FastTTSR.Worker/FastTTSR.Worker.csproj -c Release -o /out/worker -r linux-x64 --self-contained false /p:UseAppHost=true
-RUN dotnet publish src/FastTTSR.Worker.Asr/FastTTSR.Worker.Asr.csproj -c Release -o /out/worker-asr -r linux-x64 --self-contained false /p:UseAppHost=true
+COPY SharpAudio.slnx ./
+COPY src/SharpAudio.Api/SharpAudio.Api.csproj src/SharpAudio.Api/
+COPY src/SharpAudio.Worker/SharpAudio.Worker.csproj src/SharpAudio.Worker/
+COPY src/SharpAudio.Worker.Asr/SharpAudio.Worker.Asr.csproj src/SharpAudio.Worker.Asr/
+RUN dotnet restore src/SharpAudio.Api/SharpAudio.Api.csproj
+RUN dotnet restore src/SharpAudio.Worker/SharpAudio.Worker.csproj
+RUN dotnet restore src/SharpAudio.Worker.Asr/SharpAudio.Worker.Asr.csproj
+COPY src/SharpAudio.Api/ src/SharpAudio.Api/
+COPY src/SharpAudio.Worker/ src/SharpAudio.Worker/
+COPY src/SharpAudio.Worker.Asr/ src/SharpAudio.Worker.Asr/
+COPY --from=frontend-build /app/frontend/dist/ src/SharpAudio.Api/wwwroot/
+RUN dotnet publish src/SharpAudio.Api/SharpAudio.Api.csproj -c Release -o /out/api -r linux-x64 --self-contained false /p:UseAppHost=false
+RUN dotnet publish src/SharpAudio.Worker/SharpAudio.Worker.csproj -c Release -o /out/worker -r linux-x64 --self-contained false /p:UseAppHost=true
+RUN dotnet publish src/SharpAudio.Worker.Asr/SharpAudio.Worker.Asr.csproj -c Release -o /out/worker-asr -r linux-x64 --self-contained false /p:UseAppHost=true
 
 # Shared base for all runtime image variants (TTS-only / ASR-only / both).
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-preview AS runtime-base
@@ -43,10 +43,10 @@ COPY --from=backend-build /out/api/ ./
 # docker build --target runtime-tts -t fastttsr:tts .
 FROM runtime-base AS runtime-tts
 COPY --from=backend-build /out/worker/ ./worker/
-RUN chmod +x ./worker/FastTTSR.Worker
-ENV WorkerOptions__ExecutablePath=/app/worker/FastTTSR.Worker
+RUN chmod +x ./worker/SharpAudio.Worker
+ENV WorkerOptions__ExecutablePath=/app/worker/SharpAudio.Worker
 ENV SERVER_MODE=tts
-ENTRYPOINT ["dotnet", "FastTTSR.Api.dll"]
+ENTRYPOINT ["dotnet", "SharpAudio.Api.dll"]
 
 # --- ASR-only image: API + ASR worker only ---
 # docker build --target runtime-asr -t fastttsr:asr .
@@ -57,13 +57,13 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=backend-build /out/worker-asr/ ./worker-asr/
-RUN chmod +x ./worker-asr/FastTTSR.Worker.Asr
-ENV AsrWorkerOptions__ExecutablePath=/app/worker-asr/FastTTSR.Worker.Asr
+RUN chmod +x ./worker-asr/SharpAudio.Worker.Asr
+ENV AsrWorkerOptions__ExecutablePath=/app/worker-asr/SharpAudio.Worker.Asr
 # Whisper.net.Runtime ships native libs under runtimes/<rid>/ (not the standard .../native/
 # layout), so the dynamic linker won't find sibling .so dependencies without this on the path.
 ENV LD_LIBRARY_PATH=/app/runtimes/linux-x64:/app/worker-asr/runtimes/linux-x64
 ENV SERVER_MODE=asr
-ENTRYPOINT ["dotnet", "FastTTSR.Api.dll"]
+ENTRYPOINT ["dotnet", "SharpAudio.Api.dll"]
 
 # --- Combined image: API + both workers (default if no --target is given) ---
 # docker build -t fastttsr:all .   (equivalent to --target runtime-all)
@@ -75,9 +75,9 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=backend-build /out/worker/ ./worker/
 COPY --from=backend-build /out/worker-asr/ ./worker-asr/
-RUN chmod +x ./worker/FastTTSR.Worker ./worker-asr/FastTTSR.Worker.Asr
-ENV WorkerOptions__ExecutablePath=/app/worker/FastTTSR.Worker
-ENV AsrWorkerOptions__ExecutablePath=/app/worker-asr/FastTTSR.Worker.Asr
+RUN chmod +x ./worker/SharpAudio.Worker ./worker-asr/SharpAudio.Worker.Asr
+ENV WorkerOptions__ExecutablePath=/app/worker/SharpAudio.Worker
+ENV AsrWorkerOptions__ExecutablePath=/app/worker-asr/SharpAudio.Worker.Asr
 ENV LD_LIBRARY_PATH=/app/runtimes/linux-x64:/app/worker-asr/runtimes/linux-x64
 ENV SERVER_MODE=both
-ENTRYPOINT ["dotnet", "FastTTSR.Api.dll"]
+ENTRYPOINT ["dotnet", "SharpAudio.Api.dll"]

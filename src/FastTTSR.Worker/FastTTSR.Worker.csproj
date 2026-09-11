@@ -17,11 +17,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Protobuf Include="../FastTTSR.Api/Protos/synthesis.proto" GrpcServices="Server" />
+    <Protobuf Include="../SharpAudio.Api/Protos/synthesis.proto" GrpcServices="Server" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../FastTTSR.Api/FastTTSR.Api.csproj" />
+    <ProjectReference Include="../SharpAudio.Api/SharpAudio.Api.csproj" />
   </ItemGroup>
 
 </Project>

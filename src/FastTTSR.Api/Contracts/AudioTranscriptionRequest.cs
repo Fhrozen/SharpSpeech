@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.Contracts;
+namespace SharpAudio.Api.Contracts;
 
 /// <summary>
 /// Parsed form fields from a POST /v1/audio/transcriptions request (the audio file itself is

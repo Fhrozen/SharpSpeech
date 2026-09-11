@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.Models;
+namespace SharpAudio.Api.Models;
 
 /// <summary>Downloadable file shared by both TTS and ASR model definitions.</summary>
 public sealed class ModelAsset

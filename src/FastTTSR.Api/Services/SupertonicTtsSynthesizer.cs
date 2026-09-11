@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
 using System.Text;
-using FastTTSR.Api.Contracts;
-using FastTTSR.Api.Models;
+using SharpAudio.Api.Contracts;
+using SharpAudio.Api.Models;
 
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>
 /// ITtsSynthesizer implementation for the Supertonic-3 engine.

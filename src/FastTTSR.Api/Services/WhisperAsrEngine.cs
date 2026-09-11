@@ -1,8 +1,8 @@
 using System.Text;
-using FastTTSR.Api.Models;
+using SharpAudio.Api.Models;
 using Whisper.net;
 
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>
 /// Wraps a single Whisper.net (whisper.cpp/GGML) model file for one-shot audio transcription.

@@ -1,6 +1,6 @@
-# FastTTSR — LLM Wiki
+# SharpAudio — LLM Wiki
 
-A condensed, agent-optimized architecture reference for FastTTSR. This file is meant to let an
+A condensed, agent-optimized architecture reference for SharpAudio. This file is meant to let an
 agent ramp up quickly without re-discovering the codebase from scratch.
 
 **This file is a short summary/index.** Full topic-level detail lives in `docs/wiki/*.md` (linked
@@ -16,7 +16,7 @@ same PR/session.
 
 ## What this project is
 
-FastTTSR is a .NET 10 REST API (OpenAI-compatible) for Text-to-Speech and Speech-to-Text (ASR),
+SharpAudio is a .NET 10 REST API (OpenAI-compatible) for Text-to-Speech and Speech-to-Text (ASR),
 with a Vue 3 frontend and Docker packaging. Each model runs inference in an isolated, disposable OS
 worker process for memory isolation by default (spawned on demand, killed when idle), with an
 in-process mode also available. Which task type(s) (`tts`/`asr`/`both`) a given running instance
@@ -43,12 +43,12 @@ HTTP request → Program.cs minimal API endpoint → IModelCatalog (validate mod
 IModelCache (ensure model files downloaded) → ITtsSynthesizer/IAsrTranscriber (do the work) → response
 ```
 Worker mode (default, `WorkerOptions.Enabled`/`AsrWorkerOptions.Enabled` = `true`): a
-`WorkerProcessManager` spawns/pools a separate OS process (`FastTTSR.Worker`/`FastTTSR.Worker.Asr`)
+`WorkerProcessManager` spawns/pools a separate OS process (`SharpAudio.Worker`/`SharpAudio.Worker.Asr`)
 per model, communicating over gRPC. In-process mode: engines run as singletons in the API process
 itself, routed by a `*Router` class, with idle engines released periodically. See
 [docs/wiki/backend-architecture.md](wiki/backend-architecture.md) for the full detail.
 
 ## Build tooling note
 No local `dotnet` CLI in this dev environment — use `./dotnet.sh <args>` (Docker-based wrapper) for
-build/test/publish, e.g. `./dotnet.sh build FastTTSR.slnx`, `./dotnet.sh test
-tests/FastTTSR.Api.Tests`.
+build/test/publish, e.g. `./dotnet.sh build SharpAudio.slnx`, `./dotnet.sh test
+tests/SharpAudio.Api.Tests`.

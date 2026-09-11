@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option csharp_namespace = "FastTTSR.Worker.Asr.Grpc";
+option csharp_namespace = "SharpAudio.Worker.Asr.Grpc";
 
 package transcription;
 

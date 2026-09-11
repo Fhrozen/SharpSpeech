@@ -1,5 +1,5 @@
-using FastTTSR.Api.Services;
-using FastTTSR.Worker.Asr.Services;
+using SharpAudio.Api.Services;
+using SharpAudio.Worker.Asr.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 

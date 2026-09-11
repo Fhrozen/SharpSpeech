@@ -1,6 +1,6 @@
 # API Reference
 
-FastTTSR provides a RESTful API with OpenAI-compatible endpoints for text-to-speech synthesis and
+SharpAudio provides a RESTful API with OpenAI-compatible endpoints for text-to-speech synthesis and
 speech-to-text transcription. Which endpoints are available depends on the `SERVER_MODE`
 environment variable the instance was started with (`tts` | `asr` | `both`, default `tts`) - check
 `GET /api/server-info` to discover this at runtime.
@@ -394,7 +394,7 @@ curl -X POST http://localhost:5768/v1/audio/speech \
   -H 'Content-Type: application/json' \
   -d '{
     "model": "kokoro-q4",
-    "input": "Hello world! This is a test of the FastTTSR text-to-speech system.",
+    "input": "Hello world! This is a test of the SharpAudio text-to-speech system.",
     "voice": "af_bella"
   }' \
   --output output.wav
@@ -543,7 +543,7 @@ else:
 ```python
 from openai import OpenAI
 
-# Point to FastTTSR instead of OpenAI
+# Point to SharpAudio instead of OpenAI
 client = OpenAI(
     api_key="not-needed",  # No API key required
     base_url="http://localhost:5768/v1"
@@ -705,7 +705,7 @@ Typical response times (including audio generation):
 
 ### OpenAI API Compatibility
 
-FastTTSR implements a subset of OpenAI's `/v1/audio/speech` endpoint:
+SharpAudio implements a subset of OpenAI's `/v1/audio/speech` endpoint:
 
 **Compatible:**
 - ✅ `model` parameter
@@ -728,7 +728,7 @@ FastTTSR implements a subset of OpenAI's `/v1/audio/speech` endpoint:
 
 To migrate from OpenAI TTS:
 
-1. Change `base_url` to FastTTSR endpoint
+1. Change `base_url` to SharpAudio endpoint
 2. Remove or ignore `api_key` (not required)
 3. Convert voice names if using custom voices
 4. Add explicit `language` parameter for non-English
@@ -738,7 +738,7 @@ To migrate from OpenAI TTS:
 # Before (OpenAI)
 client = OpenAI(api_key="sk-...")
 
-# After (FastTTSR)
+# After (SharpAudio)
 client = OpenAI(
     api_key="not-needed",
     base_url="http://localhost:5768/v1"

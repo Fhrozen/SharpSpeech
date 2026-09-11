@@ -1,9 +1,9 @@
 using System.Text;
-using FastTTSR.Api.Services;
-using FastTTSR.Worker.Grpc;
+using SharpAudio.Api.Services;
+using SharpAudio.Worker.Grpc;
 using Grpc.Core;
 
-namespace FastTTSR.Worker.Services;
+namespace SharpAudio.Worker.Services;
 
 /// <summary>
 /// gRPC service that performs TTS synthesis in worker process

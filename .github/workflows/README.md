@@ -15,14 +15,14 @@ Automated testing workflow that runs on pull requests to verify code changes.
 - **Runtime**: ~2-5 minutes
 - **Dependencies**: None (runs in parallel)
 - **Environment**: Ubuntu latest with .NET 10.0 preview
-- **Tests**: `FastTTSR.Api.Tests` project
+- **Tests**: `SharpAudio.Api.Tests` project
 - **Output**: Unit test results uploaded as artifacts
 
 #### 2. Integration Tests
 - **Runtime**: ~5-15 minutes (first run with model download), ~3-5 minutes (cached)
 - **Dependencies**: Requires unit tests to pass first
 - **Environment**: Ubuntu latest with .NET 10.0 preview + espeak-ng
-- **Tests**: `FastTTSR.Api.IntegrationTests` project
+- **Tests**: `SharpAudio.Api.IntegrationTests` project
 - **Model Caching**: Uses GitHub Actions cache to persist downloaded models (~1-2GB)
   - Cache key: `model-cache-{config.json hash}-v1`
   - Invalidates automatically when `config.json` changes
@@ -72,14 +72,14 @@ To run tests locally in the same way CI does:
 
 ```bash
 # Unit tests
-dotnet test tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj
+dotnet test tests/SharpAudio.Api.Tests/SharpAudio.Api.Tests.csproj
 
 # Integration tests (requires API running)
 export MODEL_CACHE_DIR="${PWD}/model-cache"
 export ESPEAK_DATA_DIR="/usr/share/espeak-ng-data"
 
 # Start API in background
-cd src/FastTTSR.Api
+cd src/SharpAudio.Api
 dotnet run &
 API_PID=$!
 cd ../..
@@ -88,7 +88,7 @@ cd ../..
 sleep 10
 
 # Run tests
-dotnet test tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj
+dotnet test tests/SharpAudio.Api.IntegrationTests/SharpAudio.Api.IntegrationTests.csproj
 
 # Clean up
 kill $API_PID

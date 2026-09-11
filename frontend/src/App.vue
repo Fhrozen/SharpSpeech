@@ -382,7 +382,7 @@ onMounted(async () => {
   <main class="app">
     <div class="demo-container">
       <div class="demo-content">
-        <AppHeader title="FastTTSR" :subtitle="headerSubtitle" />
+        <AppHeader title="SharpAudio" :subtitle="headerSubtitle" />
 
         <div v-if="!serverInfoLoaded" class="demo-placeholder">
           <div class="demo-placeholder-icon">⚡</div>

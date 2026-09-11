@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.Options;
+namespace SharpAudio.Api.Options;
 
 /// <summary>
 /// Configuration options for the ASR worker process (mirrors <see cref="WorkerOptions"/>, kept as
@@ -9,7 +9,7 @@ public sealed class AsrWorkerOptions
     public const string SectionName = "AsrWorkerOptions";
 
     /// <summary>Path to the ASR worker executable.</summary>
-    public string ExecutablePath { get; init; } = "./worker-asr/FastTTSR.Worker.Asr";
+    public string ExecutablePath { get; init; } = "./worker-asr/SharpAudio.Worker.Asr";
 
     /// <summary>Idle timeout in seconds before the worker self-terminates.</summary>
     public int IdleTimeoutSeconds { get; init; } = 60;

@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-This guide covers common issues and their solutions when working with FastTTSR.
+This guide covers common issues and their solutions when working with SharpAudio.
 
 ## Table of Contents
 
@@ -362,7 +362,7 @@ curl http://localhost:5768/api/models | jq '.[] | .name'
 
 **2. Verify config.json:**
 ```bash
-cat src/FastTTSR.Api/config.json
+cat src/SharpAudio.Api/config.json
 ```
 
 **3. Check model is loaded:**
@@ -737,11 +737,11 @@ Symptoms that confirm this rather than a server bug:
   connection as secure/"certificate is valid" - that's the AV's own re-issued certificate (signed
   by its locally-installed root CA), not the original self-signed one from `generate-cert.sh`.
 
-**Solution:** add an exclusion for the FastTTSR hostname/port in the antivirus's HTTPS/encrypted-
+**Solution:** add an exclusion for the SharpAudio hostname/port in the antivirus's HTTPS/encrypted-
 connections-scanning settings (e.g. in Kaspersky: Settings → Network Settings → Encrypted
 connections scanning → add the hostname to exclusions, or temporarily set it to "Do not scan"
 to confirm the diagnosis), then retry. This is a client-side network security product limitation,
-not a FastTTSR bug.
+not a SharpAudio bug.
 
 ### Live Transcription WebSocket still fails after fixing antivirus interception, and Chrome shows "Not secure"/"you disabled security warnings for this site"
 
@@ -983,7 +983,7 @@ ffprobe output.wav
     "LogLevel": {
       "Default": "Debug",
       "Microsoft.AspNetCore": "Information",
-      "FastTTSR": "Trace"
+      "SharpAudio": "Trace"
     }
   }
 }
@@ -1029,10 +1029,10 @@ docker stats fastttsr
 **System metrics:**
 ```bash
 # CPU usage
-top -p $(pgrep -f FastTTSR)
+top -p $(pgrep -f SharpAudio)
 
 # Memory usage
-ps aux | grep FastTTSR
+ps aux | grep SharpAudio
 
 # Disk I/O
 iotop
@@ -1094,7 +1094,7 @@ soxi output.wav
 **dotnet-trace:**
 ```bash
 dotnet tool install -g dotnet-trace
-dotnet-trace collect --process-id $(pgrep -f FastTTSR)
+dotnet-trace collect --process-id $(pgrep -f SharpAudio)
 ```
 
 **BenchmarkDotNet** (add to test project):
@@ -1174,7 +1174,7 @@ public class TtsBenchmarks
 ### Reporting Issues
 
 **Include:**
-- FastTTSR version / Docker image tag
+- SharpAudio version / Docker image tag
 - Operating system and version
 - Full error message and stack trace
 - Steps to reproduce
@@ -1184,7 +1184,7 @@ public class TtsBenchmarks
 **Example:**
 ```markdown
 ## Environment
-- FastTTSR: latest (Docker)
+- SharpAudio: latest (Docker)
 - OS: Ubuntu 22.04
 - Docker: 24.0.7
 
@@ -1212,6 +1212,6 @@ Works fine for English text
 ### Resources
 
 - **Documentation:** [docs/](../docs/)
-- **GitHub Issues:** https://github.com/yourusername/FastTTSR/issues
-- **Discussions:** https://github.com/yourusername/FastTTSR/discussions
+- **GitHub Issues:** https://github.com/yourusername/SharpAudio/issues
+- **Discussions:** https://github.com/yourusername/SharpAudio/discussions
 - **Swagger API:** http://localhost:5768/swagger

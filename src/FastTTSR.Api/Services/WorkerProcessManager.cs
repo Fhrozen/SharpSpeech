@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
-using FastTTSR.Api.Options;
+using SharpAudio.Api.Options;
 
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>
 /// Manages worker process lifecycle - spawning, tracking, and cleanup. One instance is created

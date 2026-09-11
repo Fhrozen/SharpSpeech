@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>
 /// Naive streaming session for Whisper, which has no true incremental decode API: buffers raw

@@ -1,6 +1,6 @@
 # Architecture
 
-FastTTSR is designed as a high-performance, production-ready Text-to-Speech **and** Speech-to-Text
+SharpAudio is designed as a high-performance, production-ready Text-to-Speech **and** Speech-to-Text
 service with a clean separation of concerns and optimized resource management. Which task types a
 deployment serves is controlled by the `SERVER_MODE` environment variable (`tts` | `asr` | `both`,
 default `tts`); see [ASR Architecture](#asr-architecture) below for the transcription pipeline.
@@ -24,7 +24,7 @@ default `tts`); see [ASR Architecture](#asr-architecture) below for the transcri
             │                                    │
 ┌───────────┼────────────────────────────────────┼────────────────┐
 │           │        ASP.NET Core API            │                │
-│           │       (FastTTSR.Api)               │                │
+│           │       (SharpAudio.Api)               │                │
 │  ┌────────▼────────────────────────────────────▼─────────┐     │
 │  │           Minimal API Endpoints                       │     │
 │  │  /health | /api/models | /v1/audio/speech            │     │
@@ -64,13 +64,13 @@ default `tts`); see [ASR Architecture](#asr-architecture) below for the transcri
 
 ## Worker Process Architecture (New)
 
-FastTTSR now supports a **worker process mode** that isolates model loading and inference into separate processes. This provides true memory isolation and guaranteed cleanup when models become idle.
+SharpAudio now supports a **worker process mode** that isolates model loading and inference into separate processes. This provides true memory isolation and guaranteed cleanup when models become idle.
 
 ### Architecture Overview - Worker Mode
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│                    FastTTSR.Api (Main Process)                     │
+│                    SharpAudio.Api (Main Process)                     │
 │  ┌──────────────────────────────────────────────────────────────┐ │
 │  │                   HTTP Endpoints Layer                        │ │
 │  │           /v1/audio/speech | /api/models | /health           │ │
@@ -142,7 +142,7 @@ FastTTSR now supports a **worker process mode** that isolates model loading and 
 {
   "WorkerOptions": {
     "Enabled": true,
-    "ExecutablePath": "./FastTTSR.Worker",
+    "ExecutablePath": "./SharpAudio.Worker",
     "IdleTimeoutSeconds": 60,
     "PortRangeStart": 50051,
     "MaxPortAttempts": 100,
@@ -153,7 +153,7 @@ FastTTSR now supports a **worker process mode** that isolates model loading and 
 
 **Worker Spawn Command:**
 ```bash
-./FastTTSR.Worker --port 50051 --model-key "kokoro:kokoro-q4" --idle-timeout 60
+./SharpAudio.Worker --port 50051 --model-key "kokoro:kokoro-q4" --idle-timeout 60
 ```
 
 #### WorkerProxySynthesizer
@@ -176,7 +176,7 @@ service WorkerSynthesis {
 }
 ```
 
-#### FastTTSR.Worker Process
+#### SharpAudio.Worker Process
 
 **Purpose:** Self-contained worker process that loads and runs one model
 
@@ -211,7 +211,7 @@ service WorkerSynthesis {
    ↓ (no)
 5. WorkerProcessManager.SpawnWorkerAsync()
    - Allocate port (e.g., 50051)
-   - Start: ./FastTTSR.Worker --port 50051 --model-key "kokoro:kokoro-q4"
+   - Start: ./SharpAudio.Worker --port 50051 --model-key "kokoro:kokoro-q4"
    - Wait for "READY:50051" on stdout (max 30s)
    ↓
 6. Worker process starts
@@ -370,15 +370,15 @@ Workers bind to sequential ports starting from `PortRangeStart`:
 **Dockerfile:**
 ```dockerfile
 # Build both API and Worker
-RUN dotnet publish src/FastTTSR.Api/FastTTSR.Api.csproj -o /out/api
-RUN dotnet publish src/FastTTSR.Worker/FastTTSR.Worker.csproj -o /out/worker
+RUN dotnet publish src/SharpAudio.Api/SharpAudio.Api.csproj -o /out/api
+RUN dotnet publish src/SharpAudio.Worker/SharpAudio.Worker.csproj -o /out/worker
 
 # Copy to runtime image
 COPY --from=build /out/api/ ./
 COPY --from=build /out/worker/ ./worker/
 
 # Configure worker path
-ENV WorkerOptions__ExecutablePath=/app/worker/FastTTSR.Worker
+ENV WorkerOptions__ExecutablePath=/app/worker/SharpAudio.Worker
 ```
 
 **Important:** Both API and Worker share the same model cache directory (`/cache`), so models are only downloaded once.
@@ -399,16 +399,16 @@ grpc_cli call localhost:50051 synthesis.WorkerSynthesis.HealthCheck ""
 #### Process Listing
 ```bash
 # Check active workers
-ps aux | grep FastTTSR.Worker
+ps aux | grep SharpAudio.Worker
 
 # Example output:
-# ./FastTTSR.Worker --port 50051 --model-key "kokoro:kokoro-q4"
-# ./FastTTSR.Worker --port 50052 --model-key "supertonic:supertonic-3"
+# ./SharpAudio.Worker --port 50051 --model-key "kokoro:kokoro-q4"
+# ./SharpAudio.Worker --port 50052 --model-key "supertonic:supertonic-3"
 ```
 
 #### Logs
 ```
-[FastTTSR] Worker mode ENABLED - models will run in separate processes
+[SharpAudio] Worker mode ENABLED - models will run in separate processes
 [Worker] Starting on port 50051 for model: kokoro:kokoro-q4
 [Worker] READY:50051
 [Worker] Synthesis request: engine=kokoro, model=kokoro-q4
@@ -608,8 +608,8 @@ Everything above has an ASR-side counterpart, following the exact same patterns:
   streaming decoding even though today's HTTP API only exposes whole-file transcription (chunking
   happens *inside* the engine, not across separate HTTP requests).
 
-**Worker process**: a single `FastTTSR.Worker.Asr` executable internally routes Whisper vs.
-Nemotron by `model.Engine`, exactly mirroring how `FastTTSR.Worker` routes Kokoro vs. Supertonic -
+**Worker process**: a single `SharpAudio.Worker.Asr` executable internally routes Whisper vs.
+Nemotron by `model.Engine`, exactly mirroring how `SharpAudio.Worker` routes Kokoro vs. Supertonic -
 one ASR worker executable total, not two.
 
 ## Data Flow

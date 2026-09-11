@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace FastTTSR.Api.IntegrationTests.Support;
+namespace SharpAudio.Api.IntegrationTests.Support;
 
 /// <summary>Word Error Rate: word-level edit distance normalized by reference word count.</summary>
 public static class WordErrorRate

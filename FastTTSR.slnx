@@ -1,10 +1,10 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/FastTTSR.Api/FastTTSR.Api.csproj" />
-    <Project Path="src/FastTTSR.Worker/FastTTSR.Worker.csproj" />
-    <Project Path="src/FastTTSR.Worker.Asr/FastTTSR.Worker.Asr.csproj" />
+    <Project Path="src/SharpAudio.Api/SharpAudio.Api.csproj" />
+    <Project Path="src/SharpAudio.Worker/SharpAudio.Worker.csproj" />
+    <Project Path="src/SharpAudio.Worker.Asr/SharpAudio.Worker.Asr.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj" />
+    <Project Path="tests/SharpAudio.Api.Tests/SharpAudio.Api.Tests.csproj" />
   </Folder>
 </Solution>

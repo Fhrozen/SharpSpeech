@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.Contracts;
+namespace SharpAudio.Api.Contracts;
 
 /// <summary>
 /// Detailed information about an ASR model

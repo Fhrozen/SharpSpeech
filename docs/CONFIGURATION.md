@@ -1,6 +1,6 @@
 # Configuration
 
-FastTTSR can be configured through environment variables, configuration files, and docker-compose settings.
+SharpAudio can be configured through environment variables, configuration files, and docker-compose settings.
 
 ## Environment Variables
 
@@ -27,7 +27,7 @@ SERVER_MODE=both dotnet run
 
 Browsers only expose `navigator.mediaDevices` (mic/tab capture, used by the ASR live-transcription
 panel) on a secure context - HTTPS, or exactly `http://localhost`. To serve HTTPS on a LAN
-hostname/IP, FastTTSR relies on Kestrel's built-in certificate config - no application code is
+hostname/IP, SharpAudio relies on Kestrel's built-in certificate config - no application code is
 involved in loading the certificate:
 
 1. Generate a certificate: `./generate-cert.sh <your-lan-hostname-or-ip>` (prints a generated
@@ -52,7 +52,7 @@ Once `HTTPS_PORT` is set, plain HTTP requests are automatically redirected to HT
 (`UseHttpsRedirection`). Leaving `HTTPS_PORT` unset preserves today's HTTP-only behavior.
 
 This is scoped to LAN/internal self-signed use. For a publicly reachable domain with a real
-certificate (Let's Encrypt/ACME), prefer a reverse proxy in front of FastTTSR - see
+certificate (Let's Encrypt/ACME), prefer a reverse proxy in front of SharpAudio - see
 [Reverse Proxy Configuration](#reverse-proxy-configuration) below.
 
 ### Model Configuration
@@ -67,7 +67,7 @@ certificate (Let's Encrypt/ACME), prefer a reverse proxy in front of FastTTSR - 
 ```bash
 MODEL_CACHE_DIR=/var/cache/ttsr \
 MODEL_CONFIG_PATH=/etc/ttsr/models.json \
-dotnet FastTTSR.Api.dll
+dotnet SharpAudio.Api.dll
 ```
 
 ### Model Memory Management
@@ -120,11 +120,11 @@ sections, bound from environment via the standard ASP.NET Core `Section__Propert
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `WorkerOptions__Enabled` | `true` | Use the out-of-process TTS worker (`false` = in-process synthesizers) |
-| `WorkerOptions__ExecutablePath` | `./FastTTSR.Worker` | Path to the TTS worker executable |
+| `WorkerOptions__ExecutablePath` | `./SharpAudio.Worker` | Path to the TTS worker executable |
 | `WorkerOptions__IdleTimeoutSeconds` | `60` | Seconds of inactivity before the TTS worker self-terminates |
 | `WorkerOptions__PortRangeStart` | `50051` | Starting port for the TTS worker's gRPC server |
 | `AsrWorkerOptions__Enabled` | `true` | Use the out-of-process ASR worker (`false` = in-process transcribers) |
-| `AsrWorkerOptions__ExecutablePath` | `./worker-asr/FastTTSR.Worker.Asr` | Path to the ASR worker executable |
+| `AsrWorkerOptions__ExecutablePath` | `./worker-asr/SharpAudio.Worker.Asr` | Path to the ASR worker executable |
 | `AsrWorkerOptions__IdleTimeoutSeconds` | `60` | Seconds of inactivity before the ASR worker self-terminates |
 | `AsrWorkerOptions__PortRangeStart` | `50151` | Starting port for the ASR worker's gRPC server (distinct range from TTS's `50051+`) |
 
@@ -141,7 +141,7 @@ dotnet run
 
 ### appsettings.json
 
-Located at `src/FastTTSR.Api/appsettings.json`
+Located at `src/SharpAudio.Api/appsettings.json`
 
 ```json
 {
@@ -158,7 +158,7 @@ Located at `src/FastTTSR.Api/appsettings.json`
   },
   "WorkerOptions": {
     "Enabled": true,
-    "ExecutablePath": "./FastTTSR.Worker",
+    "ExecutablePath": "./SharpAudio.Worker",
     "IdleTimeoutSeconds": 60,
     "PortRangeStart": 50051,
     "MaxPortAttempts": 100,
@@ -174,7 +174,7 @@ Located at `src/FastTTSR.Api/appsettings.json`
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `Enabled` | `true` | Enable worker process mode. Set to `false` for in-process mode |
-| `ExecutablePath` | `./FastTTSR.Worker` | Path to worker executable |
+| `ExecutablePath` | `./SharpAudio.Worker` | Path to worker executable |
 | `IdleTimeoutSeconds` | `60` | Seconds before worker self-terminates (0 = never) |
 | `PortRangeStart` | `50051` | Starting port for worker gRPC servers |
 | `MaxPortAttempts` | `100` | Maximum ports to try before failing |
@@ -196,7 +196,7 @@ WorkerOptions__Enabled=false
 WorkerOptions__IdleTimeoutSeconds=120
 
 # Docker deployment path
-WorkerOptions__ExecutablePath=/app/worker/FastTTSR.Worker
+WorkerOptions__ExecutablePath=/app/worker/SharpAudio.Worker
 ```
 
 **Mode Comparison:**
@@ -265,7 +265,7 @@ Override settings for development environment:
 
 ### config.json (Model Configuration)
 
-Located at `src/FastTTSR.Api/config.json` or path specified by `MODEL_CONFIG_PATH`.
+Located at `src/SharpAudio.Api/config.json` or path specified by `MODEL_CONFIG_PATH`.
 
 Defines available TTS models (`models` array) and ASR models (`asrModels` array), their assets,
 and metadata. Both are loaded from the same file.
@@ -435,7 +435,7 @@ and metadata. Both are loaded from the same file.
 ```
 
 > The full asset list (encoder/decoder/joint each ship an accompanying `.onnx.data` file, plus
-> `audio_processor_config.json` and `tokenizer.json`) is in `src/FastTTSR.Api/config.json`.
+> `audio_processor_config.json` and `tokenizer.json`) is in `src/SharpAudio.Api/config.json`.
 
 ---
 

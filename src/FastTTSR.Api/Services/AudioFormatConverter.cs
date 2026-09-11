@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>
 /// Normalizes arbitrary uploaded audio (FLAC, MP3, OGG, WEBM, M4A, WAV, ...) to PCM16 mono WAV by

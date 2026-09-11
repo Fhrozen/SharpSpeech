@@ -1,4 +1,4 @@
-# FastTTSR Wiki — ASR Engines (Whisper + Nemotron)
+# SharpAudio Wiki — ASR Engines (Whisper + Nemotron)
 
 > Linked from [docs/LLM_WIKI.md](../LLM_WIKI.md). Covers the full ASR-side architecture: domain
 > model/catalog/contracts, the Whisper and Nemotron engines (including their bugfix narratives),
@@ -33,7 +33,7 @@ Parallel abstraction to the TTS one, added alongside it (not replacing it):
   from `onnx-community/nemotron-3.5-asr-streaming-0.6b-onnx-int4`).
 
 ## Whisper engine
-- NuGet: `Whisper.net` + `Whisper.net.Runtime` (added to `FastTTSR.Api.csproj`; native whisper.cpp
+- NuGet: `Whisper.net` + `Whisper.net.Runtime` (added to `SharpAudio.Api.csproj`; native whisper.cpp
   binaries ship inside `Whisper.net.Runtime`).
 - `Services/WhisperAsrEngine.cs`: wraps one GGML model file via `WhisperFactory.FromPath(...)`;
   `TranscribeAsync(byte[] wavBytes, string? language, ct)` resamples to 16kHz mono via
@@ -140,11 +140,11 @@ Frontend: `AsrModel.supportsVad` gates a `.vad-toggle` checkbox in the ASR panel
   (non-keyed) singleton; ASR's is a **keyed singleton** (`AddKeyedSingleton<WorkerProcessManager>
   ("asr", ...)`) with its own `WorkerOptions` (mapped from `AsrWorkerOptions`,
   `Options/AsrWorkerOptions.cs`) — distinct port range (`50151+` vs TTS's `50051+`) and executable
-  path (`./worker-asr/FastTTSR.Worker.Asr`).
-- **`FastTTSR.Worker.Asr`** (mirrors `FastTTSR.Worker`): same CLI args, Kestrel-HTTP/2 startup
+  path (`./worker-asr/SharpAudio.Worker.Asr`).
+- **`SharpAudio.Worker.Asr`** (mirrors `SharpAudio.Worker`): same CLI args, Kestrel-HTTP/2 startup
   pattern. `Services/WorkerTranscriptionService.cs` mirrors `WorkerSynthesisService`'s
   single-active-engine-with-lock pattern, routing by `request.Engine`.
-- **`Protos/transcription.proto`** (own `csharp_namespace = "FastTTSR.Worker.Asr.Grpc"`):
+- **`Protos/transcription.proto`** (own `csharp_namespace = "SharpAudio.Worker.Asr.Grpc"`):
   `WorkerTranscription` service with `Transcribe`/`HealthCheck` unary RPCs, plus `TranscribeStream`
   - a bidirectional streaming RPC (`stream TranscribeStreamChunk` in, `stream TranscribeStreamUpdate`
   out) used for live transcription in worker mode. The first request message must set `config`
@@ -246,7 +246,7 @@ meaningful:
 - Live transcription's worker-mode path (`AsrWorkerProxyTranscriber.CreateStreamingSessionAsync`) is
   covered by an opt-in integration test
   (`AsrCircularTests.Streaming_WorkerMode_TranscribesOverWebSocket`) gated on both real model
-  weights (`ASR_MODEL_TESTS=1`) and a published `FastTTSR.Worker.Asr` executable being present next
+  weights (`ASR_MODEL_TESTS=1`) and a published `SharpAudio.Worker.Asr` executable being present next
   to the API output - it isn't exercised by a plain `./dotnet.sh test` run in this dev environment
   and should be validated against a real Docker image before being fully trusted in production.
 
@@ -256,7 +256,7 @@ meaningful:
 | `SERVER_MODE` | `tts`\|`asr`\|`both` — which task type(s) this instance serves | `tts` |
 | `AsrWorkerOptions__Enabled` | ASR worker-mode vs in-process (**must be `false` for live streaming
   to work today**) | true |
-| `AsrWorkerOptions__ExecutablePath` | ASR worker binary path | `./worker-asr/FastTTSR.Worker.Asr` |
+| `AsrWorkerOptions__ExecutablePath` | ASR worker binary path | `./worker-asr/SharpAudio.Worker.Asr` |
 | `AsrWorkerOptions__PortRangeStart` | first ASR gRPC port to try | 50151 |
 | `AsrWorkerOptions__IdleTimeoutSeconds` | ASR worker self-termination timeout | 60 |
 

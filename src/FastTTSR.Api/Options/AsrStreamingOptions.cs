@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.Options;
+namespace SharpAudio.Api.Options;
 
 /// <summary>
 /// Configuration for streaming ASR segment commits (mirrors <see cref="AsrWorkerOptions"/>'s

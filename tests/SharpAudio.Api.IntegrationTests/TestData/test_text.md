@@ -1,6 +1,6 @@
 # ASR/TTS Circular Test Corpus
 
-> Used by `AsrCircularTests` (tests/FastTTSR.Api.IntegrationTests). These tests are opt-in only —
+> Used by `AsrCircularTests` (tests/SharpAudio.Api.IntegrationTests). These tests are opt-in only —
 > see `AsrModelTestGate` — because they generate real audio via the Supertonic-3 TTS model and
 > feed it into the Whisper/Nemotron ASR engines to sanity-check real end-to-end transcription,
 > downloading real models in the process.

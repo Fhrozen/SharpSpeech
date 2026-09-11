@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.Options;
+namespace SharpAudio.Api.Options;
 
 public sealed class ModelIdleMonitorOptions
 {

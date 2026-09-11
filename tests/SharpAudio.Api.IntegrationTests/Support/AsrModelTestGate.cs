@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.IntegrationTests.Support;
+namespace SharpAudio.Api.IntegrationTests.Support;
 
 /// <summary>Opt-in gate for the real-model ASR/TTS circular tests (AsrCircularTests).</summary>
 public static class AsrModelTestGate

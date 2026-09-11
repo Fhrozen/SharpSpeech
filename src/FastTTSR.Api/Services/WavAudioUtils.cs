@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>Minimal WAV (RIFF/PCM) reader/resampler - just enough for ASR input, no external audio library.</summary>
 public static class WavAudioUtils

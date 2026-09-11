@@ -1,7 +1,7 @@
-using FastTTSR.Api.Options;
+using SharpAudio.Api.Options;
 using Microsoft.Extensions.Options;
 
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>
 /// Background service that releases idle in-process ASR engines (mirrors ModelIdleMonitorService).

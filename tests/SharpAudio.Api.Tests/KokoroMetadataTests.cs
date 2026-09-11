@@ -1,6 +1,6 @@
-using FastTTSR.Api.Services;
+using SharpAudio.Api.Services;
 
-namespace FastTTSR.Api.Tests;
+namespace SharpAudio.Api.Tests;
 
 public sealed class KokoroMetadataTests
 {

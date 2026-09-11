@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>
 /// Streaming log-mel spectrogram feature extractor matching genai_config.json's parameters

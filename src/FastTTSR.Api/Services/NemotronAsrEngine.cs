@@ -1,9 +1,9 @@
 using System.Text.Json;
-using FastTTSR.Api.Models;
+using SharpAudio.Api.Models;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>
 /// Cache-aware streaming FastConformer-RNNT ASR engine (encoder + LSTM predictor + joint, 3

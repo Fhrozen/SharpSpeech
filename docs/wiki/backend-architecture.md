@@ -1,4 +1,4 @@
-# FastTTSR Wiki — Backend Architecture (TTS baseline)
+# SharpAudio Wiki — Backend Architecture (TTS baseline)
 
 > Linked from [docs/LLM_WIKI.md](../LLM_WIKI.md). Covers the pre-ASR / TTS-side architecture:
 > request flow, worker-mode vs in-process mode, the worker process lifecycle, the gRPC contract,
@@ -15,14 +15,14 @@ IModelCache (ensure model files downloaded) → ITtsSynthesizer (do the work) �
 ## Worker-mode vs in-process mode
 Controlled by `WorkerOptions.Enabled` (config section `WorkerOptions`, default `true`):
 - **Worker mode (default)**: `WorkerProcessManager` (singleton + `IHostedService`) spawns/pools a
-  separate `FastTTSR.Worker` OS process per model; `WorkerProxySynthesizer` is registered as
+  separate `SharpAudio.Worker` OS process per model; `WorkerProxySynthesizer` is registered as
   `ITtsSynthesizer` and talks to the worker over gRPC.
 - **In-process mode**: `KokoroTtsSynthesizer` + `SupertonicTtsSynthesizer` singletons are
   registered, and `TtsSynthesizerRouter` (registered as `ITtsSynthesizer`) routes each request to
   the right one by `model.Engine`. `ModelIdleMonitorService` (hosted service) periodically releases
   idle in-process engines.
 
-## Worker process lifecycle (`src/FastTTSR.Api/Services/WorkerProcessManager.cs`)
+## Worker process lifecycle (`src/SharpAudio.Api/Services/WorkerProcessManager.cs`)
 - Pools **one process per model**, keyed by `modelKey = "{model.Engine}:{model.Name}"`.
 - Spawns via `ProcessStartInfo(FileName = WorkerOptions.ExecutablePath, Arguments = "--port {p}
   --model-key \"{k}\" --idle-timeout {t}")`.
@@ -37,21 +37,21 @@ Controlled by `WorkerOptions.Enabled` (config section `WorkerOptions`, default `
   independently-configured instances (one per task type — TTS vs ASR) can be constructed manually
   in `Program.cs` and registered via keyed DI.
 
-## gRPC contract (`src/FastTTSR.Api/Protos/synthesis.proto`)
+## gRPC contract (`src/SharpAudio.Api/Protos/synthesis.proto`)
 - `service WorkerSynthesis { rpc Synthesize(...); rpc HealthCheck(...); }`
 - `SynthesizeRequest`: model_name, engine, model_path, voices_path, tokens_path,
   voice_file_extension, supported_languages, speakers, input, voice, response_format, speed,
   language.
 - `SynthesizeResponse`: audio_bytes, content_type, file_name, processing_time_seconds,
   audio_duration_seconds, character_count.
-- `FastTTSR.Worker.csproj` has a `ProjectReference` to `FastTTSR.Api.csproj` and includes the same
+- `SharpAudio.Worker.csproj` has a `ProjectReference` to `SharpAudio.Api.csproj` and includes the same
   `.proto` file (`GrpcServices="Server"`) — this is how the worker reuses `KokoroTtsEngine` /
-  `SupertonicTtsEngine`, which physically live under `src/FastTTSR.Api/Services/`.
+  `SupertonicTtsEngine`, which physically live under `src/SharpAudio.Api/Services/`.
 - `Worker/Services/WorkerSynthesisService.cs` implements the gRPC service: routes by
   `request.Engine` string (`"kokoro"` vs `"supertonic"`/`"supertonic-3"`), lazily creates and pools
   the engine, and reports activity to `IdleMonitor` on every call.
 
-## Core abstractions (`src/FastTTSR.Api/Services/`)
+## Core abstractions (`src/SharpAudio.Api/Services/`)
 - `ITtsSynthesizer.SynthesizeAsync(TtsModelDefinition model, string modelDirectory,
   OpenAiSpeechRequest request, CancellationToken ct) -> Task<SynthesisResult>` — the single
   synthesis contract, implemented by `WorkerProxySynthesizer`, `TtsSynthesizerRouter`,
@@ -69,7 +69,7 @@ Controlled by `WorkerOptions.Enabled` (config section `WorkerOptions`, default `
   (`SupertonicMetadata.IsSupertonic3Engine(...)` else falls back to Kokoro). This is the pattern to
   mirror when adding new task types/engines.
 
-## Model definition & config (`src/FastTTSR.Api/Models/TtsModelDefinition.cs`, `config.json`)
+## Model definition & config (`src/SharpAudio.Api/Models/TtsModelDefinition.cs`, `config.json`)
 ```csharp
 public sealed class TtsModelDefinition
 {
@@ -112,7 +112,7 @@ generic asset descriptor shared by both TTS and ASR model definitions.
 | `MODEL_IDLE_TIMEOUT_SECONDS` | In-process engine idle release timeout | 60 |
 | `ESPEAK_DATA_DIR` | espeak-ng phoneme data dir (Kokoro) | — |
 | `WorkerOptions__Enabled` | worker-mode vs in-process | true |
-| `WorkerOptions__ExecutablePath` | TTS worker binary path | `./FastTTSR.Worker` |
+| `WorkerOptions__ExecutablePath` | TTS worker binary path | `./SharpAudio.Worker` |
 | `WorkerOptions__PortRangeStart` | first gRPC port to try | 50051 |
 | `WorkerOptions__IdleTimeoutSeconds` | worker self-termination timeout | 60 |
 | `ASPNETCORE_ENVIRONMENT` | environment name | Production |
@@ -121,7 +121,7 @@ generic asset descriptor shared by both TTS and ASR model definitions.
 See [docs/wiki/asr-engines.md](asr-engines.md) for the ASR-specific env vars
 (`AsrWorkerOptions__*`).
 
-## Endpoints (`src/FastTTSR.Api/Program.cs`) — TTS + always-on
+## Endpoints (`src/SharpAudio.Api/Program.cs`) — TTS + always-on
 | Route | Method | Purpose |
 |---|---|---|
 | `/health` | GET | health check |
@@ -150,5 +150,5 @@ build time); `MapFallbackToFile("/index.html")` handles SPA routing.
 
 ## Build tooling note
 No local `dotnet` CLI in this dev environment — use `./dotnet.sh <args>` (Docker-based wrapper) for
-build/test/publish, e.g. `./dotnet.sh build FastTTSR.slnx`, `./dotnet.sh test
-tests/FastTTSR.Api.Tests`.
+build/test/publish, e.g. `./dotnet.sh build SharpAudio.slnx`, `./dotnet.sh test
+tests/SharpAudio.Api.Tests`.

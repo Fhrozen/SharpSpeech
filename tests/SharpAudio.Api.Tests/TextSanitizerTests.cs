@@ -1,7 +1,7 @@
-using FastTTSR.Api.Services;
+using SharpAudio.Api.Services;
 using Xunit;
 
-namespace FastTTSR.Api.Tests;
+namespace SharpAudio.Api.Tests;
 
 public class TextSanitizerTests
 {

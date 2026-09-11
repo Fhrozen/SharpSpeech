@@ -1,10 +1,10 @@
 using System.Collections.Concurrent;
-using FastTTSR.Api.Contracts;
-using FastTTSR.Api.Models;
-using FastTTSR.Worker.Grpc;
+using SharpAudio.Api.Contracts;
+using SharpAudio.Api.Models;
+using SharpAudio.Worker.Grpc;
 using Grpc.Net.Client;
 
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>
 /// Proxy synthesizer that routes requests to worker processes via gRPC

@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace FastTTSR.Api.IntegrationTests.Support;
+namespace SharpAudio.Api.IntegrationTests.Support;
 
 public sealed record AsrTestSample(string Id, string Type, string? Speaker, string Text);
 

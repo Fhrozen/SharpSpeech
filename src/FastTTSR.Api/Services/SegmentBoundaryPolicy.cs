@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>
 /// Decides when a streaming ASR session should commit (flush/bound) its current segment - shared

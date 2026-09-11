@@ -1,6 +1,6 @@
-using FastTTSR.Api.Models;
+using SharpAudio.Api.Models;
 
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>Pre-downloads all ASR models on startup (mirrors ModelWarmupService).</summary>
 public sealed class AsrModelWarmupService : BackgroundService

@@ -1,4 +1,4 @@
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>
 /// Nemotron's supported language/locale codes and their encoder-conditioning lang_id. This

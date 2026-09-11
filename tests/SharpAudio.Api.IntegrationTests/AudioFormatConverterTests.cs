@@ -1,8 +1,8 @@
-using FastTTSR.Api.IntegrationTests.Support;
-using FastTTSR.Api.Services;
+using SharpAudio.Api.IntegrationTests.Support;
+using SharpAudio.Api.Services;
 using Xunit;
 
-namespace FastTTSR.Api.IntegrationTests;
+namespace SharpAudio.Api.IntegrationTests;
 
 /// <summary>
 /// Exercises AudioFormatConverter directly (no HTTP, no downloaded ASR model weights) against

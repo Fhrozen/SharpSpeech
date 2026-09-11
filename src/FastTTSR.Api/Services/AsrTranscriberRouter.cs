@@ -1,7 +1,7 @@
-using FastTTSR.Api.Contracts;
-using FastTTSR.Api.Models;
+using SharpAudio.Api.Contracts;
+using SharpAudio.Api.Models;
 
-namespace FastTTSR.Api.Services;
+namespace SharpAudio.Api.Services;
 
 /// <summary>
 /// Routes transcription requests to the correct <see cref="IAsrTranscriber"/> implementation

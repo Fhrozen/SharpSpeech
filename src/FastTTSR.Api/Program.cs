@@ -1,6 +1,6 @@
-using FastTTSR.Api.Contracts;
-using FastTTSR.Api.Options;
-using FastTTSR.Api.Services;
+using SharpAudio.Api.Contracts;
+using SharpAudio.Api.Options;
+using SharpAudio.Api.Services;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -26,7 +26,7 @@ builder.WebHost.UseUrls(urls.ToArray());
 var serverMode = (Environment.GetEnvironmentVariable("SERVER_MODE") ?? "tts").Trim().ToLowerInvariant();
 var ttsEnabled = serverMode is "tts" or "both";
 var asrEnabled = serverMode is "asr" or "both";
-Console.WriteLine($"[FastTTSR] SERVER_MODE={serverMode} (tts={ttsEnabled}, asr={asrEnabled})");
+Console.WriteLine($"[SharpAudio] SERVER_MODE={serverMode} (tts={ttsEnabled}, asr={asrEnabled})");
 
 builder.Services.Configure<ModelCacheOptions>(builder.Configuration.GetSection(ModelCacheOptions.SectionName));
 builder.Services.Configure<ModelIdleMonitorOptions>(builder.Configuration.GetSection(ModelIdleMonitorOptions.SectionName));
@@ -46,7 +46,7 @@ if (ttsEnabled)
     if (workerOptions.Enabled)
     {
         // Worker process mode - use proxy synthesizer
-        Console.WriteLine("[FastTTSR] TTS worker mode ENABLED - models will run in separate processes");
+        Console.WriteLine("[SharpAudio] TTS worker mode ENABLED - models will run in separate processes");
         builder.Services.AddSingleton(sp => new WorkerProcessManager(workerOptions, sp.GetRequiredService<ILogger<WorkerProcessManager>>()));
         builder.Services.AddHostedService(sp => sp.GetRequiredService<WorkerProcessManager>());
         builder.Services.AddSingleton<ITtsSynthesizer, WorkerProxySynthesizer>();
@@ -54,7 +54,7 @@ if (ttsEnabled)
     else
     {
         // In-process mode - use direct synthesizers
-        Console.WriteLine("[FastTTSR] TTS worker mode DISABLED - models will run in-process");
+        Console.WriteLine("[SharpAudio] TTS worker mode DISABLED - models will run in-process");
         builder.Services.AddSingleton<KokoroTtsSynthesizer>();
         builder.Services.AddSingleton<SupertonicTtsSynthesizer>();
         builder.Services.AddSingleton<ITtsSynthesizer, TtsSynthesizerRouter>();
@@ -74,7 +74,7 @@ if (asrEnabled)
     {
         // Worker process mode - use proxy transcriber, on its own keyed WorkerProcessManager
         // instance/port range so it can run alongside the TTS worker without colliding.
-        Console.WriteLine("[FastTTSR] ASR worker mode ENABLED - models will run in separate processes");
+        Console.WriteLine("[SharpAudio] ASR worker mode ENABLED - models will run in separate processes");
         var asrProcessOptions = new WorkerOptions
         {
             ExecutablePath = asrWorkerOptions.ExecutablePath,
@@ -92,7 +92,7 @@ if (asrEnabled)
     else
     {
         // In-process mode - use direct transcribers
-        Console.WriteLine("[FastTTSR] ASR worker mode DISABLED - models will run in-process");
+        Console.WriteLine("[SharpAudio] ASR worker mode DISABLED - models will run in-process");
         builder.Services.AddSingleton<WhisperAsrTranscriber>();
         builder.Services.AddSingleton<NemotronAsrTranscriber>();
         builder.Services.AddSingleton<IAsrTranscriber, AsrTranscriberRouter>();
@@ -108,13 +108,13 @@ builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
     {
-        Title = "FastTTSR API",
+        Title = "SharpAudio API",
         Version = "v1",
         Description = "Text-to-Speech REST API with OpenAI-compatible endpoints. Powered by Kokoro TTS models with custom OnnxRuntime inference and espeak-ng phonemization.",
         Contact = new Microsoft.OpenApi.Models.OpenApiContact
         {
-            Name = "FastTTSR",
-            Url = new Uri("https://github.com/yourusername/FastTTSR")
+            Name = "SharpAudio",
+            Url = new Uri("https://github.com/yourusername/SharpAudio")
         }
     });
 
@@ -138,9 +138,9 @@ if (!string.IsNullOrWhiteSpace(httpsPort))
 app.UseSwagger();
 app.UseSwaggerUI(options =>
 {
-    options.SwaggerEndpoint("/swagger/v1/swagger.json", "FastTTSR API v1");
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "SharpAudio API v1");
     options.RoutePrefix = "swagger";
-    options.DocumentTitle = "FastTTSR API Documentation";
+    options.DocumentTitle = "SharpAudio API Documentation";
 });
 
 app.UseDefaultFiles();

@@ -36,24 +36,24 @@ duplication, before any ASR-specific code exists.
 1. Renamed `Models/TtsModelAsset.cs` → `Models/ModelAsset.cs` (generic asset descriptor: `Url`,
    `RelativePath`), shared by both TTS and ASR model definitions. Updated all references in
    `TtsModelDefinition.cs` and `ModelCatalog.cs`.
-2. Moved `IdleMonitor` from `FastTTSR.Worker/Services/IdleMonitor.cs` to
-   `FastTTSR.Api/Services/IdleMonitor.cs` so both worker projects can share it via their existing
-   `ProjectReference` to `FastTTSR.Api`. Updated `using` in `FastTTSR.Worker/Program.cs`.
+2. Moved `IdleMonitor` from `SharpAudio.Worker/Services/IdleMonitor.cs` to
+   `SharpAudio.Api/Services/IdleMonitor.cs` so both worker projects can share it via their existing
+   `ProjectReference` to `SharpAudio.Api`. Updated `using` in `SharpAudio.Worker/Program.cs`.
 3. Generalized `WorkerProcessManager`'s constructor to accept a plain `WorkerOptions` value
    (instead of `IOptions<WorkerOptions>`), so multiple independently-configured instances (one per
    task type) can be constructed manually in `Program.cs`. Updated the registration in
    `Program.cs` to resolve `IOptions<WorkerOptions>` and pass `.Value` explicitly.
 
 **Actual output files**:
-- `src/FastTTSR.Api/Models/ModelAsset.cs` (created, replaces `TtsModelAsset.cs`)
-- `src/FastTTSR.Api/Models/TtsModelDefinition.cs` (modified: `ModelAsset` type)
-- `src/FastTTSR.Api/Services/ModelCatalog.cs` (modified: `ModelAsset` type)
-- `src/FastTTSR.Api/Services/IdleMonitor.cs` (created, moved from Worker project)
-- `src/FastTTSR.Worker/Program.cs` (modified: `using FastTTSR.Api.Services;`)
-- `src/FastTTSR.Api/Services/WorkerProcessManager.cs` (modified constructor)
-- `src/FastTTSR.Api/Program.cs` (modified: `WorkerProcessManager` registration)
+- `src/SharpAudio.Api/Models/ModelAsset.cs` (created, replaces `TtsModelAsset.cs`)
+- `src/SharpAudio.Api/Models/TtsModelDefinition.cs` (modified: `ModelAsset` type)
+- `src/SharpAudio.Api/Services/ModelCatalog.cs` (modified: `ModelAsset` type)
+- `src/SharpAudio.Api/Services/IdleMonitor.cs` (created, moved from Worker project)
+- `src/SharpAudio.Worker/Program.cs` (modified: `using SharpAudio.Api.Services;`)
+- `src/SharpAudio.Api/Services/WorkerProcessManager.cs` (modified constructor)
+- `src/SharpAudio.Api/Program.cs` (modified: `WorkerProcessManager` registration)
 
-**Verification**: `./dotnet.sh build FastTTSR.slnx` → 0 errors.
+**Verification**: `./dotnet.sh build SharpAudio.slnx` → 0 errors.
 
 ---
 
@@ -92,22 +92,22 @@ engine or wiring anything into `Program.cs`.
    apply to ASR models — kept as TTS-only logic, not generalized).
 
 **Actual output files**:
-- `src/FastTTSR.Api/Models/AsrModelDefinition.cs` (created)
-- `src/FastTTSR.Api/Models/TranscriptionResult.cs` (created)
-- `src/FastTTSR.Api/Services/IAsrModelCatalog.cs` (created)
-- `src/FastTTSR.Api/Services/AsrModelCatalog.cs` (created)
-- `src/FastTTSR.Api/Services/IAsrTranscriber.cs` (created)
-- `src/FastTTSR.Api/Services/IIdleTrackingTranscriber.cs` (created)
-- `src/FastTTSR.Api/Contracts/AudioTranscriptionRequest.cs` (created)
-- `src/FastTTSR.Api/Contracts/AsrModelDefinitionResponse.cs` (created)
-- `src/FastTTSR.Api/Contracts/ServerInfoResponse.cs` (created)
-- `src/FastTTSR.Api/config.json` (modified: added `asrModels` array)
-- `src/FastTTSR.Api/Services/IModelCache.cs` (modified: new overload)
-- `src/FastTTSR.Api/Services/ModelCache.cs` (modified: new overload + shared helper)
-- `tests/FastTTSR.Api.Tests/SpeechEndpointTests.cs` (modified: `StubModelCache` implements new
+- `src/SharpAudio.Api/Models/AsrModelDefinition.cs` (created)
+- `src/SharpAudio.Api/Models/TranscriptionResult.cs` (created)
+- `src/SharpAudio.Api/Services/IAsrModelCatalog.cs` (created)
+- `src/SharpAudio.Api/Services/AsrModelCatalog.cs` (created)
+- `src/SharpAudio.Api/Services/IAsrTranscriber.cs` (created)
+- `src/SharpAudio.Api/Services/IIdleTrackingTranscriber.cs` (created)
+- `src/SharpAudio.Api/Contracts/AudioTranscriptionRequest.cs` (created)
+- `src/SharpAudio.Api/Contracts/AsrModelDefinitionResponse.cs` (created)
+- `src/SharpAudio.Api/Contracts/ServerInfoResponse.cs` (created)
+- `src/SharpAudio.Api/config.json` (modified: added `asrModels` array)
+- `src/SharpAudio.Api/Services/IModelCache.cs` (modified: new overload)
+- `src/SharpAudio.Api/Services/ModelCache.cs` (modified: new overload + shared helper)
+- `tests/SharpAudio.Api.Tests/SpeechEndpointTests.cs` (modified: `StubModelCache` implements new
   interface member)
 
-**Verification**: `./dotnet.sh build FastTTSR.slnx` → 0 errors.
+**Verification**: `./dotnet.sh build SharpAudio.slnx` → 0 errors.
 
 ---
 
@@ -122,7 +122,7 @@ Phase 4/5).
 
 **Changes**:
 1. Added `Whisper.net` + `Whisper.net.Runtime` (v1.8.1) NuGet packages to
-   `FastTTSR.Api.csproj` (engine code lives in `Api/Services`, same convention as Kokoro/Supertonic,
+   `SharpAudio.Api.csproj` (engine code lives in `Api/Services`, same convention as Kokoro/Supertonic,
    reused later by the worker project via its `ProjectReference`).
 2. `Services/WhisperAsrEngine.cs`: wraps one GGML model file via `WhisperFactory.FromPath(...)`.
    `TranscribeAsync(byte[] wavBytes, string? language, ct)` builds a processor
@@ -139,15 +139,15 @@ Phase 4/5).
    metrics, unlike TTS where duration is computed from generated PCM at a known fixed sample rate).
 
 **Actual output files**:
-- `src/FastTTSR.Api/FastTTSR.Api.csproj` (modified: 2 new package refs)
-- `src/FastTTSR.Api/Services/WhisperAsrEngine.cs` (created)
-- `src/FastTTSR.Api/Services/WhisperAsrTranscriber.cs` (created)
-- `src/FastTTSR.Api/Services/WavAudioUtils.cs` (created)
+- `src/SharpAudio.Api/SharpAudio.Api.csproj` (modified: 2 new package refs)
+- `src/SharpAudio.Api/Services/WhisperAsrEngine.cs` (created)
+- `src/SharpAudio.Api/Services/WhisperAsrTranscriber.cs` (created)
+- `src/SharpAudio.Api/Services/WavAudioUtils.cs` (created)
 
-**Verification**: `./dotnet.sh build FastTTSR.slnx` → 0 errors.
+**Verification**: `./dotnet.sh build SharpAudio.slnx` → 0 errors.
 
 **Open item carried forward to Phase 6**: verify `Whisper.net.Runtime`'s native binaries are
-correctly included for linux-x64 when `FastTTSR.Worker.Asr` is published inside the Docker image.
+correctly included for linux-x64 when `SharpAudio.Worker.Asr` is published inside the Docker image.
 **Update from Phase 5 diagnostics**: confirmed via a live smoke test that `WhisperFactory.FromPath`
 throws `"Failed to load native whisper library... PInvokeError: Success"` on
 `mcr.microsoft.com/dotnet/sdk:10.0-preview` even though `runtimes/linux-x64/libwhisper.so` (and its
@@ -161,7 +161,7 @@ persisted after a live re-test, meaning there is at least one more unresolved is
 Whisper.net's internal native-library probing/RID-matching logic not locating the sibling `.so`
 files at runtime the way `ldd`+`LD_LIBRARY_PATH` did in manual testing). **Phase 6 must**: (a) add
 `libgomp1` (and likely `libstdc++6`, usually already present) to the Dockerfile's `apt-get install`
-line for any image variant that includes `FastTTSR.Worker.Asr`; (b) further investigate/resolve the
+line for any image variant that includes `SharpAudio.Worker.Asr`; (b) further investigate/resolve the
 remaining native-load failure - candidates to try: setting `LD_LIBRARY_PATH` to the app's
 `runtimes/linux-x64` folder via a Dockerfile `ENV`, using a self-contained publish with explicit
 `-r linux-x64`, or checking for a newer/different Whisper.net.Runtime package split (some versions
@@ -242,19 +242,19 @@ graph metadata):**
    pools `NemotronAsrEngine` per model+directory (same pattern as `WhisperAsrTranscriber`).
 
 **Actual output files**:
-- `src/FastTTSR.Api/Services/NemotronVocabulary.cs` (created)
-- `src/FastTTSR.Api/Services/NemotronFeatureExtractor.cs` (created)
-- `src/FastTTSR.Api/Services/NemotronAsrEngine.cs` (created)
-- `src/FastTTSR.Api/Services/NemotronAsrTranscriber.cs` (created)
-- `src/FastTTSR.Api/Services/WavAudioUtils.cs` (modified: added `ReadMonoFloat`/resampling, and
+- `src/SharpAudio.Api/Services/NemotronVocabulary.cs` (created)
+- `src/SharpAudio.Api/Services/NemotronFeatureExtractor.cs` (created)
+- `src/SharpAudio.Api/Services/NemotronAsrEngine.cs` (created)
+- `src/SharpAudio.Api/Services/NemotronAsrTranscriber.cs` (created)
+- `src/SharpAudio.Api/Services/WavAudioUtils.cs` (modified: added `ReadMonoFloat`/resampling, and
   `TryReadHeader` now also returns the data chunk offset)
-- `src/FastTTSR.Api/config.json` (modified: added `genai_config.json` as a `nemotron-3.5` asset)
-- `src/FastTTSR.Api/Services/AsrModelCatalog.cs` (modified: same, in the hardcoded defaults)
+- `src/SharpAudio.Api/config.json` (modified: added `genai_config.json` as a `nemotron-3.5` asset)
+- `src/SharpAudio.Api/Services/AsrModelCatalog.cs` (modified: same, in the hardcoded defaults)
 
-**Verification**: `./dotnet.sh build FastTTSR.slnx` → 0 errors. The spike (encoder/decoder/joint
+**Verification**: `./dotnet.sh build SharpAudio.slnx` → 0 errors. The spike (encoder/decoder/joint
 graph metadata) was validated by actually loading the real ONNX graphs via a throwaway C# console
 app (`./dotnet.sh run`), not just read from docs — see spike findings above. **Real-weights smoke
-test** (also via a throwaway C# console app, `ProjectReference` to `FastTTSR.Api.csproj`, deleted
+test** (also via a throwaway C# console app, `ProjectReference` to `SharpAudio.Api.csproj`, deleted
 afterward): downloaded the full real `encoder.onnx.data`/`decoder.onnx.data`/`joint.onnx.data`
 (~770MB total), constructed a synthetic 3-second 16kHz mono sine-tone WAV, and called
 `NemotronAsrEngine.Transcribe` directly. **Result: SUCCESS in 2.3s** — the full pipeline (multi-chunk
@@ -306,7 +306,7 @@ output (297 words emitted vs. 296 reference words). `docs/MODELS.md`/`docs/LLM_W
 **Inputs**: Phase 2 (`WhisperAsrTranscriber`) and Phase 3 (`NemotronAsrTranscriber`) both
 implementing `IAsrTranscriber`/`IIdleTrackingTranscriber`.
 
-**Goal**: a second worker executable (`FastTTSR.Worker.Asr`) that hosts both ASR engines behind
+**Goal**: a second worker executable (`SharpAudio.Worker.Asr`) that hosts both ASR engines behind
 gRPC, plus `SERVER_MODE`-aware DI wiring in `Program.cs` so TTS/ASR/both can be toggled at runtime.
 
 **Planned changes**:
@@ -314,17 +314,17 @@ gRPC, plus `SERVER_MODE`-aware DI wiring in `Program.cs` so TTS/ASR/both can be 
    HealthCheck(...); }`; messages `TranscribeRequest` (model_name, engine, model_path, audio_bytes,
    audio_format, language) / `TranscribeResponse` (text, language_detected,
    processing_time_seconds, audio_duration_seconds).
-2. New project `src/FastTTSR.Worker.Asr/FastTTSR.Worker.Asr.csproj` (mirrors
-   `FastTTSR.Worker.csproj`): `ProjectReference` to `FastTTSR.Api.csproj`, `Protobuf` include of
+2. New project `src/SharpAudio.Worker.Asr/SharpAudio.Worker.Asr.csproj` (mirrors
+   `SharpAudio.Worker.csproj`): `ProjectReference` to `SharpAudio.Api.csproj`, `Protobuf` include of
    `transcription.proto` (`GrpcServices="Server"`), `Grpc.AspNetCore`.
    - `Program.cs`: same `--port/--model-key/--idle-timeout` arg parsing + Kestrel HTTP/2 as
      `Worker/Program.cs`.
    - `Services/WorkerTranscriptionService.cs` (mirrors `WorkerSynthesisService`): routes by
      `request.Engine` (`"whisper"` vs `"nemotron-3.5"`) to `WhisperAsrEngine`/`NemotronAsrEngine`,
      lazy-loads, idle-tracked via the shared `IdleMonitor` (Phase 0).
-3. Add the new project to `FastTTSR.slnx`.
+3. Add the new project to `SharpAudio.slnx`.
 4. `Options/AsrWorkerOptions.cs` (mirrors `WorkerOptions`): section `"AsrWorkerOptions"`,
-   `ExecutablePath` default `"./worker-asr/FastTTSR.Worker.Asr"`, `PortRangeStart` default `50151`
+   `ExecutablePath` default `"./worker-asr/SharpAudio.Worker.Asr"`, `PortRangeStart` default `50151`
    (distinct range from TTS's `50051+`), `IdleTimeoutSeconds`, `MaxPortAttempts`,
    `StartupTimeoutSeconds`, `Enabled`.
 5. `Services/AsrWorkerProxyTranscriber.cs` (mirrors `WorkerProxySynthesizer`): implements
@@ -343,47 +343,47 @@ gRPC, plus `SERVER_MODE`-aware DI wiring in `Program.cs` so TTS/ASR/both can be 
      when `SERVER_MODE` is unset/`"tts"`).
 
 **Expected output files**:
-- `src/FastTTSR.Api/Protos/transcription.proto` (new)
-- `src/FastTTSR.Worker.Asr/FastTTSR.Worker.Asr.csproj` (new)
-- `src/FastTTSR.Worker.Asr/Program.cs` (new)
-- `src/FastTTSR.Worker.Asr/Services/WorkerTranscriptionService.cs` (new)
-- `src/FastTTSR.Api/Options/AsrWorkerOptions.cs` (new)
-- `src/FastTTSR.Api/Services/AsrWorkerProxyTranscriber.cs` (new)
-- `src/FastTTSR.Api/Services/AsrTranscriberRouter.cs` (new, in-process mode)
-- `src/FastTTSR.Api/Program.cs` (modified: SERVER_MODE parsing, keyed DI, ASR registrations)
-- `FastTTSR.slnx` (modified: add project)
+- `src/SharpAudio.Api/Protos/transcription.proto` (new)
+- `src/SharpAudio.Worker.Asr/SharpAudio.Worker.Asr.csproj` (new)
+- `src/SharpAudio.Worker.Asr/Program.cs` (new)
+- `src/SharpAudio.Worker.Asr/Services/WorkerTranscriptionService.cs` (new)
+- `src/SharpAudio.Api/Options/AsrWorkerOptions.cs` (new)
+- `src/SharpAudio.Api/Services/AsrWorkerProxyTranscriber.cs` (new)
+- `src/SharpAudio.Api/Services/AsrTranscriberRouter.cs` (new, in-process mode)
+- `src/SharpAudio.Api/Program.cs` (modified: SERVER_MODE parsing, keyed DI, ASR registrations)
+- `SharpAudio.slnx` (modified: add project)
 
 **Actual output files** (matches expected, plus 2 warmup/idle-monitor services not explicitly
 called out in the original plan but needed to mirror the TTS side completely):
-- `src/FastTTSR.Api/Protos/transcription.proto` (created) - own `csharp_namespace`
-  (`FastTTSR.Worker.Asr.Grpc`, distinct from synthesis.proto's `FastTTSR.Worker.Grpc`) to avoid
+- `src/SharpAudio.Api/Protos/transcription.proto` (created) - own `csharp_namespace`
+  (`SharpAudio.Worker.Asr.Grpc`, distinct from synthesis.proto's `SharpAudio.Worker.Grpc`) to avoid
   type-name collisions.
-- `src/FastTTSR.Api/FastTTSR.Api.csproj` (modified: added `Protobuf Include="Protos/transcription.proto" GrpcServices="Client"`)
-- `src/FastTTSR.Worker.Asr/FastTTSR.Worker.Asr.csproj` (created, mirrors `FastTTSR.Worker.csproj`)
-- `src/FastTTSR.Worker.Asr/Program.cs` (created, mirrors `Worker/Program.cs`: same
+- `src/SharpAudio.Api/SharpAudio.Api.csproj` (modified: added `Protobuf Include="Protos/transcription.proto" GrpcServices="Client"`)
+- `src/SharpAudio.Worker.Asr/SharpAudio.Worker.Asr.csproj` (created, mirrors `SharpAudio.Worker.csproj`)
+- `src/SharpAudio.Worker.Asr/Program.cs` (created, mirrors `Worker/Program.cs`: same
   `--port/--model-key/--idle-timeout` args, `app.RunAsync()` + 500ms delay + `READY:{port}` stdout
   signal, default port 50151)
-- `src/FastTTSR.Worker.Asr/Services/WorkerTranscriptionService.cs` (created, mirrors
+- `src/SharpAudio.Worker.Asr/Services/WorkerTranscriptionService.cs` (created, mirrors
   `WorkerSynthesisService`: single-active-engine-with-lock pattern, routes by `request.Engine`)
-- `src/FastTTSR.Api/Options/AsrWorkerOptions.cs` (created)
-- `src/FastTTSR.Api/Services/AsrWorkerProxyTranscriber.cs` (created, mirrors
+- `src/SharpAudio.Api/Options/AsrWorkerOptions.cs` (created)
+- `src/SharpAudio.Api/Services/AsrWorkerProxyTranscriber.cs` (created, mirrors
   `WorkerProxySynthesizer`, resolves its `WorkerProcessManager` via `[FromKeyedServices("asr")]`)
-- `src/FastTTSR.Api/Services/AsrTranscriberRouter.cs` (created, mirrors `TtsSynthesizerRouter`)
-- `src/FastTTSR.Api/Services/AsrModelWarmupService.cs` (created, mirrors `ModelWarmupService`)
-- `src/FastTTSR.Api/Services/AsrModelIdleMonitorService.cs` (created, mirrors
+- `src/SharpAudio.Api/Services/AsrTranscriberRouter.cs` (created, mirrors `TtsSynthesizerRouter`)
+- `src/SharpAudio.Api/Services/AsrModelWarmupService.cs` (created, mirrors `ModelWarmupService`)
+- `src/SharpAudio.Api/Services/AsrModelIdleMonitorService.cs` (created, mirrors
   `ModelIdleMonitorService`; shares the same `ModelIdleMonitorOptions`/`MODEL_IDLE_TIMEOUT_SECONDS`
   config as TTS rather than adding a new env var)
-- `src/FastTTSR.Api/Program.cs` (modified): added `SERVER_MODE` env var parsing
+- `src/SharpAudio.Api/Program.cs` (modified): added `SERVER_MODE` env var parsing
   (`tts`(default)/`asr`/`both` → `ttsEnabled`/`asrEnabled` booleans); wrapped the existing TTS
   registration block in `if (ttsEnabled)` **unchanged internally** (byte-identical when
   `SERVER_MODE` unset); added a parallel `if (asrEnabled)` block registering
   `IAsrModelCatalog`/`IAsrTranscriber` (worker-mode via a **keyed** `"asr"` `WorkerProcessManager`
   instance so it can coexist with TTS's own non-keyed instance without collision, or in-process mode
   via `AsrTranscriberRouter`).
-- `FastTTSR.slnx` (modified: added `FastTTSR.Worker.Asr` project)
+- `SharpAudio.slnx` (modified: added `SharpAudio.Worker.Asr` project)
 
-**Verification**: `./dotnet.sh build FastTTSR.slnx` → 0 errors, 0 warnings.
-`./dotnet.sh test tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj` → all 43 existing tests still
+**Verification**: `./dotnet.sh build SharpAudio.slnx` → 0 errors, 0 warnings.
+`./dotnet.sh test tests/SharpAudio.Api.Tests/SharpAudio.Api.Tests.csproj` → all 43 existing tests still
 pass (confirms default `SERVER_MODE=tts` behavior is unaffected). Endpoints for ASR don't exist yet
 (Phase 5), so `IAsrTranscriber`/`IAsrModelCatalog` aren't exercised end-to-end through HTTP yet -
 only compile-time/DI-graph correctness has been verified this phase.
@@ -409,15 +409,15 @@ only compile-time/DI-graph correctness has been verified this phase.
 5. Guard TTS endpoints (`/v1/audio/speech`, `/api/models`) behind `ttsEnabled` the same way.
 
 **Actual output files**:
-- `src/FastTTSR.Api/Program.cs` (modified: `/api/server-info` added unconditionally; `/api/models`
+- `src/SharpAudio.Api/Program.cs` (modified: `/api/server-info` added unconditionally; `/api/models`
   and `/v1/audio/speech` wrapped in `if (ttsEnabled)` with no internal changes; `/v1/models`
   rewritten to merge `IModelCatalog`/`IAsrModelCatalog` via `httpContext.RequestServices.GetService<T>()`
   (returns null gracefully if a catalog isn't registered, rather than throwing); new
   `if (asrEnabled)` block adds `/api/asr-models` and `/v1/audio/transcriptions`).
 
 **Verification**:
-- `./dotnet.sh build FastTTSR.slnx` → 0 errors, 0 warnings.
-- `./dotnet.sh test tests/FastTTSR.Api.Tests` → all 43 existing tests still pass.
+- `./dotnet.sh build SharpAudio.slnx` → 0 errors, 0 warnings.
+- `./dotnet.sh test tests/SharpAudio.Api.Tests` → all 43 existing tests still pass.
 - **Live smoke test** (in-process mode, `SERVER_MODE=both`, real running server, curl'd via
   `docker exec` since the dev container publishes no host ports):
   - `GET /api/server-info` → `{"ttsEnabled":true,"asrEnabled":true}` ✅
@@ -435,14 +435,14 @@ only compile-time/DI-graph correctness has been verified this phase.
   owned.
 
 **Expected output files**:
-- `src/FastTTSR.Api/Program.cs` (modified: new endpoint mappings)
+- `src/SharpAudio.Api/Program.cs` (modified: new endpoint mappings)
 
 ---
 
 ## Phase 6 — Docker/Compose packaging
 **Status**: ✅ Accepted
 
-**Inputs**: Phase 4 producing both worker executables (`FastTTSR.Worker`, `FastTTSR.Worker.Asr`).
+**Inputs**: Phase 4 producing both worker executables (`SharpAudio.Worker`, `SharpAudio.Worker.Asr`).
 
 **Planned changes**:
 1. `Dockerfile`: add `ARG SERVER_MODE=all` (build-time). `backend-build` stage restores/publishes
@@ -487,7 +487,7 @@ Phase 2/5, now resolved:
 
 **Validation performed** (against the real built `fastttsr:all` image, `docker build --target
 runtime-all`, both in-process AND full worker mode):
-- `./dotnet.sh build FastTTSR.slnx` → 0 errors after the `WhisperAsrEngine`/`WavAudioUtils` fix.
+- `./dotnet.sh build SharpAudio.slnx` → 0 errors after the `WhisperAsrEngine`/`WavAudioUtils` fix.
 - `docker build --target runtime-all -t fastttsr:all .` → succeeds (frontend + all 3 .NET projects
   publish with `-r linux-x64 --self-contained false`).
 - In-process mode (`WorkerOptions__Enabled=false`, `AsrWorkerOptions__Enabled=false`): Whisper
@@ -509,8 +509,8 @@ runtime-all`, both in-process AND full worker mode):
   `LD_LIBRARY_PATH` set in ASR-capable stages)
 - `docker-compose.yml` (modified: `SERVER_MODE` + `AsrWorkerOptions__*` env passthrough, commented
   tts-only/asr-only example services using `target:`)
-- `src/FastTTSR.Api/Services/WavAudioUtils.cs` (modified: new `ResampleToMono16kWav` helper)
-- `src/FastTTSR.Api/Services/WhisperAsrEngine.cs` (modified: resamples to 16kHz before Whisper.net)
+- `src/SharpAudio.Api/Services/WavAudioUtils.cs` (modified: new `ResampleToMono16kWav` helper)
+- `src/SharpAudio.Api/Services/WhisperAsrEngine.cs` (modified: resamples to 16kHz before Whisper.net)
 - `docker-compose.test.yml`/`Dockerfile.tests` already updated in the Phase 8 circular-tests work
   (added earlier, ahead of this phase, at the user's request)
 
@@ -572,9 +572,9 @@ runtime-all`, both in-process AND full worker mode):
 **Inputs**: functioning engines (Phase 2/3), endpoints (Phase 5).
 
 **Planned changes**:
-1. `tests/FastTTSR.Api.Tests/AsrModelCatalogTests.cs` (mirrors `ModelCatalogTests.cs`).
-2. `tests/FastTTSR.Api.Tests/AsrTranscriberRouterTests.cs`.
-3. ~~`tests/FastTTSR.Api.IntegrationTests/SpeechTranscriptionTests.cs`~~ — **superseded**: this
+1. `tests/SharpAudio.Api.Tests/AsrModelCatalogTests.cs` (mirrors `ModelCatalogTests.cs`).
+2. `tests/SharpAudio.Api.Tests/AsrTranscriberRouterTests.cs`.
+3. ~~`tests/SharpAudio.Api.IntegrationTests/SpeechTranscriptionTests.cs`~~ — **superseded**: this
    would have downloaded real Whisper/Nemotron weights inside the always-run `integration-tests`
    Docker profile, which contradicts the later, explicit user decision that ASR-with-real-models
    testing must be opt-in only and excluded from CI (see "Circular TTS->ASR model tests" below,
@@ -583,12 +583,12 @@ runtime-all`, both in-process AND full worker mode):
 4. Extend `ModelHealthTests.cs` pattern for `/api/server-info`.
 
 **Actual output files**:
-- `tests/FastTTSR.Api.Tests/AsrModelCatalogTests.cs` (new): catalog contains `whisper-base`/
+- `tests/SharpAudio.Api.Tests/AsrModelCatalogTests.cs` (new): catalog contains `whisper-base`/
   `nemotron-3.5`, correct `Engine` strings, Whisper's `ModelPath` is one of its own `Assets`,
   Nemotron exposes >10 `SupportedLanguages` including `en`/`ja`, Nemotron declares all 3
   encoder/decoder/joint `.onnx`+`.onnx.data` assets plus config/vocab files, unknown model name
   returns `false`, `GetSupportedModels()` returns exactly both entries.
-- `tests/FastTTSR.Api.Tests/AsrTranscriberRouterTests.cs` (new): instantiates the real
+- `tests/SharpAudio.Api.Tests/AsrTranscriberRouterTests.cs` (new): instantiates the real
   `AsrTranscriberRouter` with real (but otherwise idle) `WhisperAsrTranscriber`/
   `NemotronAsrTranscriber` and a bogus model directory — no real model weights needed since each
   engine fails fast (Whisper's explicit `FileNotFoundException` on the missing `.bin` file vs.
@@ -599,17 +599,17 @@ runtime-all`, both in-process AND full worker mode):
   it with its own `InvalidOperationException` — proving it was *routed* there, even though Whisper
   itself is strict about the engine string matching exactly `"whisper"`), and `GetLoadedEngines()`
   starts empty.
-- `tests/FastTTSR.Api.IntegrationTests/ModelHealthTests.cs` (modified): added
+- `tests/SharpAudio.Api.IntegrationTests/ModelHealthTests.cs` (modified): added
   `ServerInfo_ShouldReflectConfiguredServerMode`, which re-derives the expected
   `ttsEnabled`/`asrEnabled` from the `SERVER_MODE` env var the same way `Program.cs` does, then
   asserts `GET /api/server-info` matches — correct under whichever mode a given test run/container
   is actually configured for, no real ASR models required.
 
 **Verification performed**:
-- `./dotnet.sh build FastTTSR.slnx` — 0 errors.
-- `./dotnet.sh test tests/FastTTSR.Api.Tests/FastTTSR.Api.Tests.csproj` — 54/54 passed (was 43
+- `./dotnet.sh build SharpAudio.slnx` — 0 errors.
+- `./dotnet.sh test tests/SharpAudio.Api.Tests/SharpAudio.Api.Tests.csproj` — 54/54 passed (was 43
   before this phase; +11 new ASR tests), 0 failed, 0 skipped.
-- Did not re-run `tests/FastTTSR.Api.IntegrationTests` (Docker-based, requires downloaded TTS
+- Did not re-run `tests/SharpAudio.Api.IntegrationTests` (Docker-based, requires downloaded TTS
   models) or the opt-in `AsrCircularTests` this phase — no production code changed, only test
   additions plus one pre-existing test file edit that doesn't touch ASR-model-requiring code
   paths.
@@ -621,7 +621,7 @@ speakers), feed it into Whisper/Nemotron, and check transcription quality - as a
 never runs in CI (downloads real multi-hundred-MB-to-GB models and runs real inference).
 
 **Design**:
-- `tests/FastTTSR.Api.IntegrationTests/TestData/test_text.md`: human-readable corpus - 3 short
+- `tests/SharpAudio.Api.IntegrationTests/TestData/test_text.md`: human-readable corpus - 3 short
   (2-5 sentence) samples, 2 long (~150-250 word) paragraph samples, and 1 long ~20-turn
   conversation script (alternating speakers F1/M2), each tagged with `## <id> (type: ..., speaker:
   ...)` headings. The conversation is used for the "streaming" test: concatenating many
@@ -662,7 +662,7 @@ ASR, it just hadn't been hit before). **Fixed**: `ModelCache` now uses a per-mod
 `SemaphoreSlim` to serialize concurrent ensure-calls for the same model.
 
 **Validation performed**:
-- `./dotnet.sh build FastTTSR.slnx` → 0 errors. `./dotnet.sh test tests/FastTTSR.Api.Tests` → 43/43
+- `./dotnet.sh build SharpAudio.slnx` → 0 errors. `./dotnet.sh test tests/SharpAudio.Api.Tests` → 43/43
   still pass (ModelCache fix didn't regress anything).
 - Ran `AsrCircularTests` unfiltered without `ASR_MODEL_TESTS` set → all 12 cases correctly show as
   **Skipped**, 0 downloads triggered, ~60ms total (confirms the gate is truly zero-cost by default).
@@ -678,22 +678,22 @@ ASR, it just hadn't been hit before). **Fixed**: `ModelCache` now uses a per-mod
   container environments until that's fixed.
 
 **Actual output files**:
-- `tests/FastTTSR.Api.IntegrationTests/TestData/test_text.md` (new)
-- `tests/FastTTSR.Api.IntegrationTests/Support/AsrTestCorpus.cs` (new)
-- `tests/FastTTSR.Api.IntegrationTests/Support/WordErrorRate.cs` (new)
-- `tests/FastTTSR.Api.IntegrationTests/Support/WavTestUtils.cs` (new)
-- `tests/FastTTSR.Api.IntegrationTests/Support/AsrModelTestGate.cs` (new)
-- `tests/FastTTSR.Api.IntegrationTests/AsrCircularTests.cs` (new)
-- `tests/FastTTSR.Api.IntegrationTests/FastTTSR.Api.IntegrationTests.csproj` (modified: added
+- `tests/SharpAudio.Api.IntegrationTests/TestData/test_text.md` (new)
+- `tests/SharpAudio.Api.IntegrationTests/Support/AsrTestCorpus.cs` (new)
+- `tests/SharpAudio.Api.IntegrationTests/Support/WordErrorRate.cs` (new)
+- `tests/SharpAudio.Api.IntegrationTests/Support/WavTestUtils.cs` (new)
+- `tests/SharpAudio.Api.IntegrationTests/Support/AsrModelTestGate.cs` (new)
+- `tests/SharpAudio.Api.IntegrationTests/AsrCircularTests.cs` (new)
+- `tests/SharpAudio.Api.IntegrationTests/SharpAudio.Api.IntegrationTests.csproj` (modified: added
   `Xunit.SkippableFact` package + `TestData/test_text.md` copy-to-output)
-- `src/FastTTSR.Api/Services/ModelCache.cs` (modified: per-model-name locking, bug fix)
+- `src/SharpAudio.Api/Services/ModelCache.cs` (modified: per-model-name locking, bug fix)
 - `tests/run-tests.sh` (modified: new `asr-model-tests` mode)
 - `docker-compose.test.yml` (modified: new `asr-model-tests` service, self-hosting, no `fastttsr`
   dependency, `ASR_MODEL_TESTS=1`)
 - `Dockerfile.tests` (modified: added `libgomp1` so Whisper's native lib has a chance to load)
 - `.github/workflows/ci-tests.yml` (modified: integration-tests job now runs `dotnet test ... --filter "Category!=AsrModelTests"`, explicit belt-and-suspenders exclusion alongside the env-var gate)
 
-**How to run**: `ASR_MODEL_TESTS=1 dotnet test tests/FastTTSR.Api.IntegrationTests/... --filter
+**How to run**: `ASR_MODEL_TESTS=1 dotnet test tests/SharpAudio.Api.IntegrationTests/... --filter
 "Category=AsrModelTests"`, or `./tests/run-tests.sh asr-model-tests` (docker-compose-based).
 
 ---
@@ -785,18 +785,18 @@ text. Whisper doesn't have this failure mode since it truly auto-detects.
    rather than omitting the field - both paths now converge to the same fixed `101` lang_id.
 
 **Actual output files**:
-- `src/FastTTSR.Api/Services/NemotronLanguages.cs` (modified: default fallback)
-- `src/FastTTSR.Api/Services/NemotronVocabulary.cs` (modified: language-tag-aware decode overload)
-- `src/FastTTSR.Api/Services/NemotronAsrEngine.cs` (modified: uses new decode overload)
+- `src/SharpAudio.Api/Services/NemotronLanguages.cs` (modified: default fallback)
+- `src/SharpAudio.Api/Services/NemotronVocabulary.cs` (modified: language-tag-aware decode overload)
+- `src/SharpAudio.Api/Services/NemotronAsrEngine.cs` (modified: uses new decode overload)
 - `frontend/src/App.vue` (modified: `asrLanguageOptions` computed, `syncAsrModelDefaults`,
   `transcribe()` comment)
 - `frontend/src/components/LanguageSelector.vue` (modified: `'auto': 'Auto-detect'` display label)
-- `tests/FastTTSR.Api.Tests/NemotronLanguagesTests.cs` (new)
-- `tests/FastTTSR.Api.Tests/NemotronVocabularyTests.cs` (new)
+- `tests/SharpAudio.Api.Tests/NemotronLanguagesTests.cs` (new)
+- `tests/SharpAudio.Api.Tests/NemotronVocabularyTests.cs` (new)
 
 **Verification**:
-- `./dotnet.sh build FastTTSR.slnx` → 0 errors.
-- `./dotnet.sh test tests/FastTTSR.Api.Tests` → 66/66 passed (was 54; +12 new tests).
+- `./dotnet.sh build SharpAudio.slnx` → 0 errors.
+- `./dotnet.sh test tests/SharpAudio.Api.Tests` → 66/66 passed (was 54; +12 new tests).
 - `cd frontend && npx vue-tsc --noEmit && pnpm run build` → 0 type errors, build succeeds.
 - Not yet re-run: the opt-in `AsrCircularTests`/a live non-English-audio smoke test against real
   Nemotron weights (no model weights available in this pass) - the fix is verified by
@@ -844,25 +844,25 @@ known (trivial since the bytes are already fully buffered in memory before retur
    and document the fixed bugs.
 
 **Actual output files**:
-- `src/FastTTSR.Api/Services/AudioFormatConverter.cs` (new)
-- `src/FastTTSR.Api/Program.cs` (modified: wiring + error handling + endpoint description)
+- `src/SharpAudio.Api/Services/AudioFormatConverter.cs` (new)
+- `src/SharpAudio.Api/Program.cs` (modified: wiring + error handling + endpoint description)
 - `Dockerfile` (modified: `ffmpeg` in `runtime-asr`/`runtime-all`)
 - `Dockerfile.tests` (modified: `ffmpeg` added)
-- `tests/FastTTSR.Api.IntegrationTests/Support/FfmpegTestGate.cs` (new)
-- `tests/FastTTSR.Api.IntegrationTests/Support/FfmpegTestEncoder.cs` (new, test-only reverse
+- `tests/SharpAudio.Api.IntegrationTests/Support/FfmpegTestGate.cs` (new)
+- `tests/SharpAudio.Api.IntegrationTests/Support/FfmpegTestEncoder.cs` (new, test-only reverse
   encoder used to build FLAC/MP3 fixtures)
-- `tests/FastTTSR.Api.IntegrationTests/AudioFormatConverterTests.cs` (new: FLAC/MP3 round-trip,
+- `tests/SharpAudio.Api.IntegrationTests/AudioFormatConverterTests.cs` (new: FLAC/MP3 round-trip,
   gated only on ffmpeg's presence, no model weights needed)
-- `tests/FastTTSR.Api.IntegrationTests/AsrCircularTests.cs` (modified: added
+- `tests/SharpAudio.Api.IntegrationTests/AsrCircularTests.cs` (modified: added
   `Offline_NonWavUpload_TranscribesSuccessfully`, an opt-in real end-to-end FLAC upload test
   gated on both `AsrModelTestGate` and `FfmpegTestGate`; `TranscribeAsync` gained optional
   `fileName`/`contentType` params)
 - `docs/API.md`, `docs/TROUBLESHOOTING.md` (modified)
 
 **Verification**:
-- `./dotnet.sh build FastTTSR.slnx` → 0 errors.
-- `./dotnet.sh test tests/FastTTSR.Api.Tests` → 66/66 passed (unchanged).
-- `./dotnet.sh test tests/FastTTSR.Api.IntegrationTests --filter FullyQualifiedName~AudioFormatConverterTests`
+- `./dotnet.sh build SharpAudio.slnx` → 0 errors.
+- `./dotnet.sh test tests/SharpAudio.Api.Tests` → 66/66 passed (unchanged).
+- `./dotnet.sh test tests/SharpAudio.Api.IntegrationTests --filter FullyQualifiedName~AudioFormatConverterTests`
   → correctly **Skipped** (no ffmpeg in the plain SDK image `dotnet.sh` uses), proving the gate
   works.
 - **Real verification, not just skip-checking**: built `Dockerfile.tests` (now includes `ffmpeg`)
@@ -919,35 +919,35 @@ during Nemotron transcription (ported from the validated Python reference's `Vad
    property and VAD behavior description.
 
 **Actual output files**:
-- `src/FastTTSR.Api/Services/SileroVadEngine.cs` (new, includes `ISileroVadEngine`)
-- `src/FastTTSR.Api/Services/SileroVadGate.cs` (new)
-- `src/FastTTSR.Api/Services/NemotronAsrEngine.cs` (modified: vad config parsing, lazy VAD engine,
+- `src/SharpAudio.Api/Services/SileroVadEngine.cs` (new, includes `ISileroVadEngine`)
+- `src/SharpAudio.Api/Services/SileroVadGate.cs` (new)
+- `src/SharpAudio.Api/Services/NemotronAsrEngine.cs` (modified: vad config parsing, lazy VAD engine,
   gating in `RunEncoderChunks`, `Transcribe` gains `enableVad` param, `Dispose` disposes the VAD
   engine if created)
-- `src/FastTTSR.Api/Services/NemotronAsrTranscriber.cs` (modified: passes `request.EnableVad`)
-- `src/FastTTSR.Api/Contracts/AudioTranscriptionRequest.cs` (modified: `EnableVad`)
-- `src/FastTTSR.Api/Models/AsrModelDefinition.cs`,
-  `src/FastTTSR.Api/Contracts/AsrModelDefinitionResponse.cs` (modified: `SupportsVad`)
-- `src/FastTTSR.Api/Services/AsrModelCatalog.cs`, `src/FastTTSR.Api/config.json` (modified:
+- `src/SharpAudio.Api/Services/NemotronAsrTranscriber.cs` (modified: passes `request.EnableVad`)
+- `src/SharpAudio.Api/Contracts/AudioTranscriptionRequest.cs` (modified: `EnableVad`)
+- `src/SharpAudio.Api/Models/AsrModelDefinition.cs`,
+  `src/SharpAudio.Api/Contracts/AsrModelDefinitionResponse.cs` (modified: `SupportsVad`)
+- `src/SharpAudio.Api/Services/AsrModelCatalog.cs`, `src/SharpAudio.Api/config.json` (modified:
   `supportsVad` per model)
-- `src/FastTTSR.Api/Program.cs` (modified: `use_vad` form parsing, `/api/asr-models` response,
+- `src/SharpAudio.Api/Program.cs` (modified: `use_vad` form parsing, `/api/asr-models` response,
   endpoint description)
 - `frontend/src/types.ts`, `frontend/src/App.vue` (modified: VAD checkbox + state)
-- `tests/FastTTSR.Api.Tests/SileroVadGateTests.cs` (new: fake-engine-based policy tests, no real
+- `tests/SharpAudio.Api.Tests/SileroVadGateTests.cs` (new: fake-engine-based policy tests, no real
   weights needed)
-- `tests/FastTTSR.Api.Tests/AsrModelCatalogTests.cs` (modified: `SupportsVad` assertions)
-- `tests/FastTTSR.Api.IntegrationTests/AsrCircularTests.cs` (modified: new opt-in
+- `tests/SharpAudio.Api.Tests/AsrModelCatalogTests.cs` (modified: `SupportsVad` assertions)
+- `tests/SharpAudio.Api.IntegrationTests/AsrCircularTests.cs` (modified: new opt-in
   `Offline_NemotronWithVad_TranscribesWithoutCrashing` case; `TranscribeAsync` gained an
   `enableVad` param)
 - `docs/API.md`, `docs/CONFIGURATION.md`, `docs/MODELS.md` (modified)
 
 **Verification**:
-- `./dotnet.sh build FastTTSR.slnx` → 0 errors.
-- `./dotnet.sh test tests/FastTTSR.Api.Tests` → 69/69 passed (was 66; +3 new `SileroVadGateTests`
+- `./dotnet.sh build SharpAudio.slnx` → 0 errors.
+- `./dotnet.sh test tests/SharpAudio.Api.Tests` → 69/69 passed (was 66; +3 new `SileroVadGateTests`
   covering never-drop-during-speech, drop-after-configured-silence-duration, and
   counter-reset-on-speech-return).
 - `cd frontend && npx vue-tsc --noEmit && pnpm run build` → 0 type errors, build succeeds.
-- `./dotnet.sh test tests/FastTTSR.Api.IntegrationTests --filter Category=AsrModelTests` → all 14
+- `./dotnet.sh test tests/SharpAudio.Api.IntegrationTests --filter Category=AsrModelTests` → all 14
   cases (including the new VAD case) correctly show as **Skipped** by default - confirms the gate
   is still zero-cost.
 - Not yet run: the opt-in `Offline_NemotronWithVad_TranscribesWithoutCrashing` (needs real
@@ -957,13 +957,13 @@ during Nemotron transcription (ported from the validated Python reference's `Vad
 ---
 
 ## Reference files (existing code whose patterns are mirrored)
-- `src/FastTTSR.Api/Services/TtsSynthesizerRouter.cs` — pattern for `AsrTranscriberRouter`.
-- `src/FastTTSR.Api/Services/SupertonicTtsEngine.cs` — multi-ONNX-session pattern for
+- `src/SharpAudio.Api/Services/TtsSynthesizerRouter.cs` — pattern for `AsrTranscriberRouter`.
+- `src/SharpAudio.Api/Services/SupertonicTtsEngine.cs` — multi-ONNX-session pattern for
   `NemotronAsrEngine`.
-- `src/FastTTSR.Api/Services/KokoroTtsEngine.cs` / `KokoroTtsSynthesizer.cs` — single-session
+- `src/SharpAudio.Api/Services/KokoroTtsEngine.cs` / `KokoroTtsSynthesizer.cs` — single-session
   pooling pattern, followed exactly by `WhisperAsrEngine`/`WhisperAsrTranscriber`.
-- `src/FastTTSR.Api/Services/WorkerProcessManager.cs`, `Services/WorkerProxySynthesizer.cs`,
-  `src/FastTTSR.Worker/Program.cs`, `Services/WorkerSynthesisService.cs` — worker process pattern
-  for `FastTTSR.Worker.Asr`.
-- `src/FastTTSR.Api/Protos/synthesis.proto` — pattern for `transcription.proto`.
-- `src/FastTTSR.Api/Program.cs` — current DI wiring/endpoint mapping to extend.
+- `src/SharpAudio.Api/Services/WorkerProcessManager.cs`, `Services/WorkerProxySynthesizer.cs`,
+  `src/SharpAudio.Worker/Program.cs`, `Services/WorkerSynthesisService.cs` — worker process pattern
+  for `SharpAudio.Worker.Asr`.
+- `src/SharpAudio.Api/Protos/synthesis.proto` — pattern for `transcription.proto`.
+- `src/SharpAudio.Api/Program.cs` — current DI wiring/endpoint mapping to extend.

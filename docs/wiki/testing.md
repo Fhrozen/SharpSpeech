@@ -1,8 +1,8 @@
-# FastTTSR Wiki — Testing
+# SharpAudio Wiki — Testing
 
 > Linked from [docs/LLM_WIKI.md](../LLM_WIKI.md).
 
-- `tests/FastTTSR.Api.Tests`: unit tests (`ModelCatalogTests`, `KokoroMetadataTests`,
+- `tests/SharpAudio.Api.Tests`: unit tests (`ModelCatalogTests`, `KokoroMetadataTests`,
   `SherpaOnnxTtsSynthesizerTests`, `SpeechEndpointTests`, `TextSanitizerTests`,
   `AsrModelCatalogTests`, `AsrTranscriberRouterTests`, `NemotronLanguagesTests`,
   `NemotronVocabularyTests`, `SileroVadGateTests`). The ASR router test instantiates the real
@@ -12,17 +12,17 @@
   missing `encoder.onnx`), which is enough to prove routing went to the right engine.
   `SileroVadGateTests` uses a fake `ISileroVadEngine` to unit-test the consecutive-silence gating
   policy without needing real Silero weights.
-- `tests/FastTTSR.Api.IntegrationTests`: full-stack tests via Docker (`SpeechSynthesisTests`,
+- `tests/SharpAudio.Api.IntegrationTests`: full-stack tests via Docker (`SpeechSynthesisTests`,
   `ModelHealthTests` — including a `SERVER_MODE`-aware `/api/server-info` check,
   `JapaneseConcurrencyTests`, `AudioFormatConverterTests` — FLAC/MP3 round-trip, gated on ffmpeg's
   presence).
-- Run: `dotnet test tests/FastTTSR.Api.Tests`, or `./tests/run-tests.sh all` /
+- Run: `dotnet test tests/SharpAudio.Api.Tests`, or `./tests/run-tests.sh all` /
   `docker compose -f docker-compose.test.yml up --abort-on-container-exit` for integration.
 - Frontend: `cd frontend && pnpm install && pnpm run build` (runs `vue-tsc --noEmit` then `vite
   build`); no pnpm preinstalled in the dev container - install via `npm install -g pnpm` first.
 
 ## Circular TTS→ASR model tests (opt-in, real models, not run in CI)
-`tests/FastTTSR.Api.IntegrationTests/AsrCircularTests.cs` synthesizes real audio via Supertonic-3
+`tests/SharpAudio.Api.IntegrationTests/AsrCircularTests.cs` synthesizes real audio via Supertonic-3
 (`test_text.md` corpus — short/long samples + a long multi-speaker conversation script) and feeds
 it into Whisper/Nemotron via the real HTTP endpoints, checking transcription quality (word error
 rate) and crash-resistance on long multi-chunk audio. **Opt-in only**: gated by

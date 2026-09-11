@@ -31,7 +31,7 @@ ENV ESPEAK_DATA_DIR=/app/assets/espeak-ng-data
 
 # espeak-ng (Kokoro TTS phonemization) + libgomp1 (Whisper.net's native ggml-cpu library needs OpenMP)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libespeak-ng1 espeak-ng-data libgomp1 && \
+    apt-get install -y --no-install-recommends libespeak-ng1 espeak-ng-data libgomp1 curl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

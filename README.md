@@ -1,11 +1,11 @@
-# SharpSpeech
+# SharpAudio
 
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![Vue.js](https://img.shields.io/badge/Vue.js-3.5-4FC08D?logo=vue.js)](https://vuejs.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](https://www.docker.com/)
 [![OpenAI Compatible](https://img.shields.io/badge/OpenAI-Compatible-00A67E)](https://platform.openai.com/docs/api-reference/audio/createSpeech)
 
-**SharpSpeech** is a high-performance Text-to-Speech **and** Speech-to-Text REST API with OpenAI-compatible endpoints, **highly vibe-coded**:blush:. Built with .NET 10, it features a Vue.js frontend, Docker containerization, and support for multiple state-of-the-art TTS models (Kokoro, Supertonic-3) and ASR models (Whisper, Nemotron). Which task types a given deployment serves — TTS, ASR, or both — is controlled by a single `SERVER_MODE` environment variable.
+**SharpAudio** is a high-performance Text-to-Speech **and** Speech-to-Text REST API with OpenAI-compatible endpoints, **highly vibe-coded**:blush:. Built with .NET 10, it features a Vue.js frontend, Docker containerization, and support for multiple state-of-the-art TTS models (Kokoro, Supertonic-3) and ASR models (Whisper, Nemotron). Which task types a given deployment serves — TTS, ASR, or both — is controlled by a single `SERVER_MODE` environment variable.
 
 ## ✨ Features
 
@@ -29,8 +29,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/Fhrozen/SharpSpeech.git
-cd SharpSpeech
+git clone https://github.com/Fhrozen/SharpAudio.git
+cd SharpAudio
 
 # Start the service
 docker compose up -d
@@ -43,7 +43,7 @@ curl -X POST http://localhost:5768/v1/audio/speech \
   -H 'Content-Type: application/json' \
   -d '{
     "model": "kokoro-q4",
-    "input": "Hello world, this is a test of SharpSpeech.",
+    "input": "Hello world, this is a test of SharpAudio.",
     "voice": "af_bella",
     "speed": 1.0
   }' \
@@ -141,7 +141,7 @@ See [Configuration Guide](docs/CONFIGURATION.md) for all options.
 
 ```bash
 # Backend
-cd src/SharpSpeech.Api
+cd src/SharpAudio.Api
 dotnet restore
 dotnet run
 
@@ -161,19 +161,19 @@ See [Development Guide](docs/DEVELOPMENT.md) for detailed setup instructions.
 ./tests/run-tests.sh
 
 # Run specific test suite
-dotnet test tests/SharpSpeech.Api.Tests
-dotnet test tests/SharpSpeech.Api.IntegrationTests
+dotnet test tests/SharpAudio.Api.Tests
+dotnet test tests/SharpAudio.Api.IntegrationTests
 
 # Opt-in: real-model circular TTS->ASR tests (downloads GB-scale weights, skipped by default and
 # excluded from CI)
-ASR_MODEL_TESTS=1 dotnet test tests/SharpSpeech.Api.IntegrationTests --filter "Category=AsrModelTests"
+ASR_MODEL_TESTS=1 dotnet test tests/SharpAudio.Api.IntegrationTests --filter "Category=AsrModelTests"
 # or
 ./tests/run-tests.sh asr-model-tests
 ```
 
 ## 📦 Production Deployment
 
-SharpSpeech is production-ready with:
+SharpAudio is production-ready with:
 - Automatic model memory management
 - Graceful degradation on failures
 - Health check endpoints
@@ -200,7 +200,7 @@ See [LICENSE](LICENSE) file for details.
 ## 📞 Support
 
 - Documentation: [docs/](docs/)
-- Issues: [GitHub Issues](https://github.com/yourusername/SharpSpeech/issues)
+- Issues: [GitHub Issues](https://github.com/yourusername/SharpAudio/issues)
 - API Docs: http://localhost:5768/swagger (when running)
 - Configure the timeout via the `MODEL_IDLE_TIMEOUT_SECONDS` environment variable
 - Set to `0` to disable automatic release and keep all loaded models in memory
@@ -211,7 +211,7 @@ See [LICENSE](LICENSE) file for details.
 
 Unit tests:
 ```bash
-dotnet test tests/SharpSpeech.Api.Tests/SharpSpeech.Api.Tests.csproj
+dotnet test tests/SharpAudio.Api.Tests/SharpAudio.Api.Tests.csproj
 ```
 
 Integration tests with Docker:
